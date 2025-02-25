@@ -32,8 +32,8 @@ def load_data():
             df["Total_RVU"] = pd.to_numeric(df["Total_RVU"], errors="coerce")
         if "Total_Points" in df.columns:
             df["Total_Points"] = pd.to_numeric(df["Total_Points"], errors="coerce")
-        if "Month" in df.columns:
-            df["Month"] = pd.to_datetime(df["Month"], errors="coerce", format='%Y-%m')
+        if "Year-Month" in df.columns:
+            df["Year-Month"] = pd.to_datetime(df["Year-Month"], errors="coerce", format='%Y-%m')
     
     return data
 
@@ -47,15 +47,15 @@ st.sidebar.title("Filters")
 # Sidebar Filters
 physician_filter = st.sidebar.multiselect("Select Physicians", data['physician_kpi']['Finalizing Provider'].unique(), default=[])
 modality_filter = st.sidebar.multiselect("Select Modality", data['modality_distribution']['Modality'].unique(), default=[])
-start_date, end_date = st.sidebar.date_input("Select Date Range", [data['physician_time_series']['Month'].min(), data['physician_time_series']['Month'].max()])
+start_date, end_date = st.sidebar.date_input("Select Date Range", [data['physician_time_series']['Year-Month'].min(), data['physician_time_series']['Year-Month'].max()])
 
 # Apply Filters
 filtered_kpi = data['physician_kpi'][data['physician_kpi']['Finalizing Provider'].isin(physician_filter)] if physician_filter else data['physician_kpi']
 filtered_modality = data['modality_distribution'][data['modality_distribution']['Modality'].isin(modality_filter)] if modality_filter else data['modality_distribution']
-filtered_workload = data['physician_time_series'][(data['physician_time_series']['Month'] >= pd.to_datetime(start_date)) & (data['physician_time_series']['Month'] <= pd.to_datetime(end_date))]
+filtered_workload = data['physician_time_series'][(data['physician_time_series']['Year-Month'] >= pd.to_datetime(start_date)) & (data['physician_time_series']['Year-Month'] <= pd.to_datetime(end_date))]
 
-# Ensure workload trends use month-year format
-filtered_workload['Month'] = filtered_workload['Month'].dt.strftime('%Y-%m')
+# Convert workload trends to Month-Year format
+filtered_workload['Year-Month'] = filtered_workload['Year-Month'].dt.strftime('%Y-%m')
 
 # Main Dashboard
 st.title("📊 MILV Executive Dashboard")
@@ -66,7 +66,7 @@ col2.metric("Total RVU", f"{filtered_kpi['Total_RVU'].sum():,.2f}")
 col3.metric("Total Points", f"{filtered_kpi['Total_Points'].sum():,.2f}")
 
 st.subheader("Workload Trends by Month")
-fig = px.line(filtered_workload.sort_values(by="Month", ascending=True), x="Month", y="Total_Exams", color="Finalizing Provider", markers=True)
+fig = px.line(filtered_workload.sort_values(by="Year-Month", ascending=True), x="Year-Month", y="Total_Exams", color="Finalizing Provider", markers=True)
 st.plotly_chart(fig, use_container_width=True)
 
 st.subheader("Total Exams by Modality")
