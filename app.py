@@ -53,11 +53,11 @@ if page == "Overview":
     col3.metric("Total Points", f"{data['physician_kpi']['Total_Points'].sum():,.2f}")
     
     st.subheader("Workload Trends by Day of Week")
-    fig = px.bar(data['day_of_week_workload'], x="Day of Week", y="Total Exams", text="Total Exams", color="Total Exams")
+    fig = px.bar(data['day_of_week_workload'].sort_values(by="Total Exams", ascending=False), x="Day of Week", y="Total Exams", text="Total Exams", color="Total Exams")
     st.plotly_chart(fig, use_container_width=True)
     
     st.subheader("Hourly Workload Distribution")
-    fig = px.line(data['hourly_workload'], x="Hour", y="Total Exams", markers=True)
+    fig = px.line(data['hourly_workload'].sort_values(by="Hour", ascending=True), x="Hour", y="Total Exams", markers=True)
     st.plotly_chart(fig, use_container_width=True)
 
 elif page == "Physician Performance":
@@ -71,7 +71,8 @@ elif page == "Physician Performance":
     st.plotly_chart(fig, use_container_width=True)
     
     st.subheader("Physician Workload Over Time")
-    fig = px.line(data['physician_time_series'], x="Month", y="Total_RVU", color="Finalizing Provider", markers=True)
+    time_series_filtered = data['physician_time_series'][data['physician_time_series']['Month'].str.startswith("2024")]  # Ensure only CY2024 data
+    fig = px.line(time_series_filtered.sort_values(by="Month", ascending=True), x="Month", y="Total_RVU", color="Finalizing Provider", markers=True)
     st.plotly_chart(fig, use_container_width=True)
 
 elif page == "Modality Analysis":
@@ -91,15 +92,16 @@ elif page == "Modality Analysis":
 elif page == "Workload Trends":
     st.title("📈 Workload Trends")
     
-    st.subheader("Exams Over Time")
-    fig = px.line(data['physician_time_series'], x="Month", y="Total_Exams", color="Finalizing Provider", markers=True)
+    st.subheader("Exams Over Time (CY2024 Only)")
+    workload_filtered = data['physician_time_series'][data['physician_time_series']['Month'].str.startswith("2024")]  # Only CY2024 data
+    fig = px.line(workload_filtered.sort_values(by="Month", ascending=True), x="Month", y="Total_Exams", color="Finalizing Provider", markers=True)
     st.plotly_chart(fig, use_container_width=True)
 
 elif page == "Data Explorer":
     st.title("🔍 Data Explorer")
     
     st.subheader("Physician KPI Data")
-    st.dataframe(data['physician_kpi'])
+    st.dataframe(data['physician_kpi'].style.set_sticky())
     
     st.subheader("Physician Time Series Data")
-    st.dataframe(data['physician_time_series'])
+    st.dataframe(data['physician_time_series'].style.set_sticky())
