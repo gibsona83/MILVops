@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import os
+from datetime import datetime
 
 # Ensure set_page_config is the first Streamlit command
 st.set_page_config(page_title="MILV Executive Dashboard", layout="wide")
@@ -44,10 +45,18 @@ logo_path = os.path.join(os.path.dirname(__file__), "milv.png")
 st.sidebar.image(logo_path, use_container_width=True)
 st.sidebar.title("Filters")
 
+# Ensure 'Year-Month' has valid date values
+data['physician_time_series'] = data['physician_time_series'].dropna(subset=['Year-Month'])
+data['physician_time_series']['Year-Month'] = pd.to_datetime(data['physician_time_series']['Year-Month'], format='%Y-%m')
+
 # Sidebar Filters
 physician_filter = st.sidebar.multiselect("Select Physicians", data['physician_kpi']['Finalizing Provider'].unique(), default=[])
 modality_filter = st.sidebar.multiselect("Select Modality", data['modality_distribution']['Modality'].unique(), default=[])
-start_date, end_date = st.sidebar.date_input("Select Date Range", [data['physician_time_series']['Year-Month'].min(), data['physician_time_series']['Year-Month'].max()])
+
+# Convert min/max dates to Python date format for Streamlit
+min_date = data['physician_time_series']['Year-Month'].min().date()
+max_date = data['physician_time_series']['Year-Month'].max().date()
+start_date, end_date = st.sidebar.date_input("Select Date Range", [min_date, max_date])
 
 # Apply Filters
 filtered_kpi = data['physician_kpi'][data['physician_kpi']['Finalizing Provider'].isin(physician_filter)] if physician_filter else data['physician_kpi']
