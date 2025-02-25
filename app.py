@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
-# Set Streamlit Page Config (This must be the first Streamlit command)
+# Set Streamlit Page Config (MUST be the first Streamlit command)
 st.set_page_config(page_title="MILV Executive Dashboard", layout="wide")
 
 # Load data files
@@ -26,5 +26,8 @@ data = load_data()
 
 # Apply MILV theme and logo
 logo_path = "milv.png"
-st.sidebar.image(logo_path, use_column_width=True)
+st.sidebar.image(logo_path, use_container_width=True)  # Fix: use_container_width instead of use_column_width
 st.sidebar.title("Navigation")
+
+# Sidebar Navigation
+page = st.sidebar.radio("Go to", ["Overview", "Physician Performance", "Modality Analysis", "Workload Trends", "Data Explorer"])
