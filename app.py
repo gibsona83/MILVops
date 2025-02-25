@@ -21,12 +21,9 @@ def load_data():
     
     data = {}
     for key, file in data_files.items():
-        if not os.path.exists(file):
-            st.error(f"⚠️ Missing file: {file}")
-        else:
+        if os.path.exists(file):
             data[key] = pd.read_csv(file)
-            st.success(f"✅ Loaded {file} successfully!")
-            
+    
     # Ensure correct data types
     for key, df in data.items():
         if "Total_Exams" in df.columns:
@@ -39,11 +36,6 @@ def load_data():
     return data
 
 data = load_data()
-
-# Debugging: Display loaded data
-for key, df in data.items():
-    st.write(f"📊 **{key} Data Preview:**")
-    st.dataframe(df.head())
 
 # Apply MILV theme and logo
 logo_path = os.path.join(os.path.dirname(__file__), "milv.png")
@@ -71,9 +63,11 @@ if page == "Overview":
 elif page == "Physician Performance":
     st.title("👨‍⚕️ Physician Performance")
     
+    physician_filter = st.multiselect("Select Physicians", data['physician_kpi']['Finalizing Provider'].unique(), default=[])
+    filtered_data = data['physician_kpi'][data['physician_kpi']['Finalizing Provider'].isin(physician_filter)] if physician_filter else data['physician_kpi']
+    
     st.subheader("Top Physicians by Total RVU")
-    top_physicians = data['physician_kpi'].nlargest(10, 'Total_RVU')
-    fig = px.bar(top_physicians, x="Finalizing Provider", y="Total_RVU", text="Total_RVU", color="Total_RVU")
+    fig = px.bar(filtered_data.nlargest(10, 'Total_RVU'), x="Finalizing Provider", y="Total_RVU", text="Total_RVU", color="Total_RVU")
     st.plotly_chart(fig, use_container_width=True)
     
     st.subheader("Physician Workload Over Time")
@@ -83,8 +77,11 @@ elif page == "Physician Performance":
 elif page == "Modality Analysis":
     st.title("📟 Modality Analysis")
     
+    modality_filter = st.multiselect("Select Modality", data['modality_distribution']['Modality'].unique(), default=[])
+    filtered_modality = data['modality_distribution'][data['modality_distribution']['Modality'].isin(modality_filter)] if modality_filter else data['modality_distribution']
+    
     st.subheader("Total Exams by Modality")
-    fig = px.pie(data['modality_distribution'], names="Modality", values="Total Exams", title="Modality Distribution")
+    fig = px.pie(filtered_modality, names="Modality", values="Total Exams", title="Modality Distribution")
     st.plotly_chart(fig)
     
     st.subheader("Physician-Specific Modality Breakdown")
