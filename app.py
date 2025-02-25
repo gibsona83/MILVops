@@ -32,6 +32,8 @@ def load_data():
             df["Total_RVU"] = pd.to_numeric(df["Total_RVU"], errors="coerce")
         if "Total_Points" in df.columns:
             df["Total_Points"] = pd.to_numeric(df["Total_Points"], errors="coerce")
+        if "Month" in df.columns:
+            df["Month"] = pd.to_datetime(df["Month"], errors="coerce")
     
     return data
 
@@ -71,29 +73,17 @@ elif page == "Physician Performance":
     st.plotly_chart(fig, use_container_width=True)
     
     st.subheader("Physician Workload Over Time")
-    time_series_filtered = data['physician_time_series'][data['physician_time_series']['Month'].str.startswith("2024")]  # Ensure only CY2024 data
+    time_series_filtered = data['physician_time_series'][data['physician_time_series']['Month'].dt.year == 2024]  # Ensure only CY2024 data
     fig = px.line(time_series_filtered.sort_values(by="Month", ascending=True), x="Month", y="Total_RVU", color="Finalizing Provider", markers=True)
-    st.plotly_chart(fig, use_container_width=True)
-
-elif page == "Modality Analysis":
-    st.title("📟 Modality Analysis")
-    
-    modality_filter = st.multiselect("Select Modality", data['modality_distribution']['Modality'].unique(), default=[])
-    filtered_modality = data['modality_distribution'][data['modality_distribution']['Modality'].isin(modality_filter)] if modality_filter else data['modality_distribution']
-    
-    st.subheader("Total Exams by Modality")
-    fig = px.pie(filtered_modality, names="Modality", values="Total Exams", title="Modality Distribution")
-    st.plotly_chart(fig)
-    
-    st.subheader("Physician-Specific Modality Breakdown")
-    fig = px.bar(data['physician_modality'], x="Physician", y="Exam Count", color="Modality", text="Exam Count")
     st.plotly_chart(fig, use_container_width=True)
 
 elif page == "Workload Trends":
     st.title("📈 Workload Trends")
     
-    st.subheader("Exams Over Time (CY2024 Only)")
-    workload_filtered = data['physician_time_series'][data['physician_time_series']['Month'].str.startswith("2024")]  # Only CY2024 data
+    start_date, end_date = st.sidebar.date_input("Select Date Range", [data['physician_time_series']['Month'].min(), data['physician_time_series']['Month'].max()])
+    workload_filtered = data['physician_time_series'][(data['physician_time_series']['Month'] >= pd.to_datetime(start_date)) & (data['physician_time_series']['Month'] <= pd.to_datetime(end_date))]
+    
+    st.subheader("Exams Over Time (CY2024 Monthly)")
     fig = px.line(workload_filtered.sort_values(by="Month", ascending=True), x="Month", y="Total_Exams", color="Finalizing Provider", markers=True)
     st.plotly_chart(fig, use_container_width=True)
 
@@ -102,6 +92,9 @@ elif page == "Data Explorer":
     
     st.subheader("Physician KPI Data")
     st.dataframe(data['physician_kpi'].style.set_sticky())
-    
-    st.subheader("Physician Time Series Data")
-    st.dataframe(data['physician_time_series'].style.set_sticky())
+    search_term = st.text_input("Search Physician")
+    if search_term:
+        filtered_df = data['physician_kpi'][data['physician_kpi']['Finalizing Provider'].str.contains(search_term, case=False, na=False)]
+        st.dataframe(filtered_df)
+    else:
+        st.dataframe(data['physician_kpi'])
