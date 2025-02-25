@@ -33,7 +33,7 @@ def load_data():
         if "Total_Points" in df.columns:
             df["Total_Points"] = pd.to_numeric(df["Total_Points"], errors="coerce")
         if "Month" in df.columns:
-            df["Month"] = pd.to_datetime(df["Month"], errors="coerce")
+            df["Month"] = pd.to_datetime(df["Month"], errors="coerce", format='%Y-%m')
     
     return data
 
@@ -53,6 +53,9 @@ start_date, end_date = st.sidebar.date_input("Select Date Range", [data['physici
 filtered_kpi = data['physician_kpi'][data['physician_kpi']['Finalizing Provider'].isin(physician_filter)] if physician_filter else data['physician_kpi']
 filtered_modality = data['modality_distribution'][data['modality_distribution']['Modality'].isin(modality_filter)] if modality_filter else data['modality_distribution']
 filtered_workload = data['physician_time_series'][(data['physician_time_series']['Month'] >= pd.to_datetime(start_date)) & (data['physician_time_series']['Month'] <= pd.to_datetime(end_date))]
+
+# Ensure workload trends use month-year format
+filtered_workload['Month'] = filtered_workload['Month'].dt.strftime('%Y-%m')
 
 # Main Dashboard
 st.title("📊 MILV Executive Dashboard")
