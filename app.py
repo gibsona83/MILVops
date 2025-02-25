@@ -3,7 +3,7 @@ import pandas as pd
 import plotly.express as px
 import os
 
-# Set Streamlit Page Config (MUST be the first Streamlit command)
+# Ensure set_page_config is the first Streamlit command
 st.set_page_config(page_title="MILV Executive Dashboard", layout="wide")
 
 # Load data files with absolute paths
@@ -54,7 +54,7 @@ filtered_kpi = data['physician_kpi'][data['physician_kpi']['Finalizing Provider'
 filtered_modality = data['modality_distribution'][data['modality_distribution']['Modality'].isin(modality_filter)] if modality_filter else data['modality_distribution']
 filtered_workload = data['physician_time_series'][(data['physician_time_series']['Year-Month'] >= pd.to_datetime(start_date)) & (data['physician_time_series']['Year-Month'] <= pd.to_datetime(end_date))]
 
-# Convert workload trends to Month-Year format
+# Convert workload trends to Year-Month format
 filtered_workload['Year-Month'] = filtered_workload['Year-Month'].dt.strftime('%Y-%m')
 
 # Main Dashboard
