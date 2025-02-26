@@ -28,7 +28,7 @@ def load_csv_data():
     for file in csv_files:
         file_path = os.path.join(".", file)
         try:
-            temp_df = pd.read_csv(file_path, nrows=100000, compression="infer")  # Loads compressed & uncompressed CSVs
+            temp_df = pd.read_csv(file_path, nrows=100000, compression="infer")  # Supports compressed & uncompressed CSVs
             temp_df["source_file"] = file  # Track source file
             df_list.append(temp_df)
         except Exception as e:
@@ -45,8 +45,12 @@ def load_csv_data():
     # Expected Columns (Based on Your CSV Structure)
     expected_columns = ["finalizing_provider", "total_exams", "total_rvu", "total_points"]
 
-    # Find available columns
-    available_columns = list(set(expected_columns) & set(df_list[0].columns))
+    # Find available columns across all CSVs
+    common_columns = set(df_list[0].columns)
+    for df in df_list[1:]:
+        common_columns &= set(df.columns)
+
+    available_columns = list(common_columns & set(expected_columns))
 
     if not available_columns:
         st.error("❌ None of the expected columns were found in the CSV files.")
@@ -57,7 +61,7 @@ def load_csv_data():
     missing_cols = [col for col in expected_columns if col not in available_columns]
     if missing_cols:
         st.warning(f"⚠️ Some columns are missing: {missing_cols}")
-    
+
     # Merge only available columns
     merged_df = pd.concat([df[available_columns] for df in df_list], ignore_index=True)
     return merged_df
@@ -130,7 +134,7 @@ st.markdown(
        ```
        git init
        git add .
-       git commit -m "Updated app to handle missing columns dynamically"
+       git commit -m "Fixed KeyError by dynamically handling missing columns"
        git branch -M main
        git remote add origin https://github.com/gibsona83/MILVops.git
        git push -u origin main
