@@ -128,18 +128,6 @@ selected_sections = st.sidebar.multiselect("🏥 Select Sections", section_optio
 if "ALL" not in selected_sections:
     df = df[df["section"].isin(selected_sections)]
 
-# Modality Filter
-modality_options = ["ALL"] + sorted(df["modality"].dropna().unique())
-selected_modalities = st.sidebar.multiselect("🖼️ Select Modalities", modality_options, default=["ALL"])
-if "ALL" not in selected_modalities:
-    df = df[df["modality"].isin(selected_modalities)]
-
-# Provider Filter
-provider_options = ["ALL"] + sorted(df["finalizing_provider"].dropna().unique())
-selected_providers = st.sidebar.multiselect("👨‍⚕️ Select Providers", provider_options, default=["ALL"])
-if "ALL" not in selected_providers:
-    df = df[df["finalizing_provider"].isin(selected_providers)]
-
 # Download CSV
 csv_data = df.to_csv(index=False).encode("utf-8")
 st.sidebar.download_button(label=f"📥 Download {len(df):,} rows as CSV", data=csv_data, file_name="filtered_data.csv", mime="text/csv")
@@ -161,6 +149,22 @@ col4.metric("⏳ Avg TAT (mins)", f"{df['tat'].mean():,.2f}")
 # ---------------------------
 # Deployment Instructions
 # ---------------------------
-st.markdown("""
-### 📌 Deployment Instructions
-1. **Push to GitHub**:
+st.markdown(
+    """
+    ### 📌 Deployment Instructions
+    1. **Push to GitHub**:
+       ```
+       git init
+       git add .
+       git commit -m "Initial commit"
+       git branch -M main
+       git remote add origin https://github.com/gibsona83/MILVops.git
+       git push -u origin main
+       ```
+    2. **Deploy on Streamlit Cloud**:
+       - Go to **[Streamlit Cloud](https://share.streamlit.io/)**
+       - Connect your GitHub repository
+       - Set `app.py` as the main entry point.
+       - Ensure `data/milv_data.db` or CSV files are in the repo.
+    """
+)
