@@ -13,11 +13,11 @@ st.title("MILV Diagnostic Radiology")
 st.caption("*Excludes mammo and IR modalities*")
 
 # ---------------------------
-# 📥 Load Data from CSV (No SQLite)
+# 📥 Load Data from CSV (Handles Missing Columns)
 # ---------------------------
 @st.cache_data
 def load_csv_data():
-    """Loads CSV files from the main directory and merges them."""
+    """Loads CSV files from the main directory and merges them, handling missing columns."""
     csv_files = [f for f in os.listdir(".") if f.endswith(".csv") or f.endswith(".csv.gz")]
 
     if not csv_files:
@@ -45,15 +45,21 @@ def load_csv_data():
     # Expected Columns (Based on Your CSV Structure)
     expected_columns = ["finalizing_provider", "total_exams", "total_rvu", "total_points"]
 
-    # Check if required columns exist
-    missing_cols = [col for col in expected_columns if col not in df_list[0].columns]
-    if missing_cols:
-        st.error(f"❌ Missing required columns: {missing_cols}")
-        st.write("🔍 Found columns in CSV:", list(df_list[0].columns))
+    # Find available columns
+    available_columns = list(set(expected_columns) & set(df_list[0].columns))
+
+    if not available_columns:
+        st.error("❌ None of the expected columns were found in the CSV files.")
+        st.write("🔍 Found columns:", list(df_list[0].columns))
         return pd.DataFrame()
 
-    # Merge only common columns
-    merged_df = pd.concat([df[expected_columns] for df in df_list], ignore_index=True)
+    # Show missing columns in Streamlit UI
+    missing_cols = [col for col in expected_columns if col not in available_columns]
+    if missing_cols:
+        st.warning(f"⚠️ Some columns are missing: {missing_cols}")
+    
+    # Merge only available columns
+    merged_df = pd.concat([df[available_columns] for df in df_list], ignore_index=True)
     return merged_df
 
 df = load_csv_data()
@@ -74,11 +80,12 @@ if df.empty:
 st.sidebar.image("milv.png", width=250)
 st.sidebar.header("📊 Filters")
 
-# Provider Filter
-provider_options = ["ALL"] + sorted(df["finalizing_provider"].dropna().unique())
-selected_providers = st.sidebar.multiselect("👨‍⚕️ Select Providers", provider_options, default=["ALL"])
-if "ALL" not in selected_providers:
-    df = df[df["finalizing_provider"].isin(selected_providers)]
+# Provider Filter (Only if available)
+if "finalizing_provider" in df.columns:
+    provider_options = ["ALL"] + sorted(df["finalizing_provider"].dropna().unique())
+    selected_providers = st.sidebar.multiselect("👨‍⚕️ Select Providers", provider_options, default=["ALL"])
+    if "ALL" not in selected_providers:
+        df = df[df["finalizing_provider"].isin(selected_providers)]
 
 # Download CSV
 csv_data = df.to_csv(index=False).encode("utf-8")
@@ -89,13 +96,16 @@ if df.empty:
     st.stop()
 
 # ---------------------------
-# Aggregated KPIs Display
+# Aggregated KPIs Display (Only if available)
 # ---------------------------
 st.markdown("## 📊 Aggregated KPIs")
-col1, col2, col3 = st.columns(3)
-col1.metric("📝 Total Exams", f"{df['total_exams'].sum():,}")
-col2.metric("⚖️ Total RVU", f"{df['total_rvu'].sum():,.2f}")
-col3.metric("🔢 Total Points", f"{df['total_points'].sum():,.2f}")
+columns_to_display = ["total_exams", "total_rvu", "total_points"]
+metrics = {"total_exams": "📝 Total Exams", "total_rvu": "⚖️ Total RVU", "total_points": "🔢 Total Points"}
+
+columns = st.columns(len(columns_to_display))
+for i, col_name in enumerate(columns_to_display):
+    if col_name in df.columns:
+        columns[i].metric(metrics[col_name], f"{df[col_name].sum():,.2f}")
 
 # ---------------------------
 # Pagination for Large Datasets
@@ -120,7 +130,7 @@ st.markdown(
        ```
        git init
        git add .
-       git commit -m "Optimized app to only use CSV files"
+       git commit -m "Updated app to handle missing columns dynamically"
        git branch -M main
        git remote add origin https://github.com/gibsona83/MILVops.git
        git push -u origin main
