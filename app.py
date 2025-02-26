@@ -16,6 +16,14 @@ if uploaded_file:
     # Data Cleaning
     df = df.drop(columns=[col for col in df.columns if "Unnamed" in col], errors='ignore')
     df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
+    
+    # Ensure the column is treated as a string before conversion
+    df['Turnaround'] = df['Turnaround'].astype(str).str.strip()
+    
+    # Replace invalid formats
+    df['Turnaround'] = df['Turnaround'].apply(lambda x: x if ':' in x else None)
+    
+    # Convert to timedelta, setting invalid values to NaT
     df['Turnaround'] = pd.to_timedelta(df['Turnaround'], errors='coerce')
     
     # Sidebar Filters
