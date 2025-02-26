@@ -17,6 +17,10 @@ if uploaded_file is not None:
         # ✅ Standardize Column Names
         df.columns = df.columns.str.strip().str.lower().str.replace(" ", "_")
 
+        # ✅ Rename 'author' → 'radiologist' for consistency
+        if "author" in df.columns:
+            df.rename(columns={"author": "radiologist"}, inplace=True)
+
         # ✅ Sidebar: Add Filters
         st.sidebar.title("Filters")
 
@@ -27,13 +31,18 @@ if uploaded_file is not None:
             )
             df_filtered = df[df["radiologist"].isin(selected_radiologists)]
         else:
-            st.warning("⚠️ 'Radiologist' column not found. Showing all data.")
+            st.warning("⚠️ 'Radiologist' column not found. Using 'Author' instead.")
             df_filtered = df.copy()
 
-        # 📌 Convert "Turnaround" Column
+        # 📌 Convert "Turnaround" Column Properly
         if "turnaround" in df_filtered.columns:
             df_filtered["turnaround"] = df_filtered["turnaround"].astype(str)
-            df_filtered["turnaround"] = df_filtered["turnaround"].str.replace(r"\.", " days ", regex=True)
+
+            # ✅ Handle inconsistent formats like "an hour"
+            df_filtered["turnaround"] = df_filtered["turnaround"].replace(
+                {"an hour": "1:00:00", "a day": "1 day"}, regex=True
+            )
+
             df_filtered["turnaround"] = pd.to_timedelta(df_filtered["turnaround"], errors="coerce")
             df_filtered["turnaround"] = df_filtered["turnaround"].fillna(pd.Timedelta(seconds=0))
             avg_turnaround = df_filtered["turnaround"].mean().total_seconds() / 60
@@ -46,7 +55,7 @@ if uploaded_file is not None:
         col1.metric("⏳ Avg Turnaround Time (mins)", round(avg_turnaround, 2) if avg_turnaround else "N/A")
         col2.metric("📑 Total Cases", df_filtered.shape[0])
 
-        # 📌 **Meaningful Visualization: Turnaround by Radiologist**
+        # 📌 **Turnaround Visualization by Radiologist**
         if "radiologist" in df_filtered.columns and "turnaround" in df_filtered.columns:
             st.markdown("## 📈 Turnaround Time by Radiologist")
             avg_turnaround_per_radiologist = df_filtered.groupby("radiologist")["turnaround"].mean().dt.total_seconds().div(60)
