@@ -14,14 +14,13 @@ st.title("MILV Diagnostic Radiology")
 st.caption("*Excludes mammo and IR modalities*")
 
 # ---------------------------
-# 📥 Load Data from CSV/Excel (Root Directory, No 'data/' Folder)
+# 📥 Load Data from CSV/Excel (Root Directory)
 # ---------------------------
-DATA_FOLDER = "."  # Use the main directory instead of 'data/'
+DATA_FOLDER = "."  # Main directory (no 'data/' folder)
 
 @st.cache_data
 def load_csv_data():
-    """Loads all CSV files from the main directory, merges them into a single DataFrame."""
-    # Get all CSV files from the root directory
+    """Loads all CSV files from the main directory and merges them."""
     csv_files = [f for f in os.listdir(DATA_FOLDER) if f.endswith(".csv")]
 
     if not csv_files:
@@ -38,7 +37,6 @@ def load_csv_data():
         except Exception as e:
             st.warning(f"⚠️ Skipping {file} due to error: {e}")
 
-    # Ensure we have valid data
     if not df_list:
         st.error("❌ All CSV files are empty or invalid.")
         return pd.DataFrame()
@@ -47,17 +45,18 @@ def load_csv_data():
     for df in df_list:
         df.columns = df.columns.str.strip().str.lower().str.replace(" ", "_")
 
-    # Find common columns
-    common_columns = set(df_list[0].columns)
-    for df in df_list[1:]:
-        common_columns &= set(df.columns)
+    # Expected Columns
+    expected_columns = ["created_date", "final_date", "modality", "section", "finalizing_provider", "rvu"]
 
-    if not common_columns:
-        st.error("❌ No common columns found across CSV files.")
+    # Check if all expected columns exist
+    missing_cols = [col for col in expected_columns if col not in df_list[0].columns]
+    if missing_cols:
+        st.error(f"❌ Missing required columns: {missing_cols}")
+        st.write("🔍 Found columns in CSV:", list(df_list[0].columns))  # Show available columns
         return pd.DataFrame()
 
     # Merge only common columns
-    merged_df = pd.concat([df[list(common_columns)] for df in df_list], ignore_index=True)
+    merged_df = pd.concat([df[expected_columns] for df in df_list], ignore_index=True)
     return merged_df
 
 df = load_csv_data()
@@ -114,3 +113,26 @@ col1.metric("📝 Total Exams", f"{len(df):,}")
 col2.metric("⚖️ Total RVU", f"{df['rvu'].sum():,.2f}")
 col3.metric("📊 Avg RVU/Exam", f"{df['rvu_per_exam'].mean():,.2f}")
 col4.metric("⏳ Avg TAT (mins)", f"{df['tat'].mean():,.2f}")
+
+# ---------------------------
+# Deployment Instructions
+# ---------------------------
+st.markdown(
+    """
+    ### 📌 Deployment Instructions
+    1. **Push to GitHub**:
+       ```
+       git init
+       git add .
+       git commit -m "Updated app to handle missing columns"
+       git branch -M main
+       git remote add origin https://github.com/gibsona83/MILVops.git
+       git push -u origin main
+       ```
+    2. **Deploy on Streamlit Cloud**:
+       - Go to **[Streamlit Cloud](https://share.streamlit.io/)**
+       - Connect your GitHub repository
+       - Set `app.py` as the main entry point.
+       - Ensure CSV files are **in the main directory** (not inside `data/`).
+    """
+)
