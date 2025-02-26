@@ -13,39 +13,44 @@ st.title("MILV Diagnostic Radiology")
 st.caption("*Excludes mammo and IR modalities*")
 
 # ---------------------------
-# 📥 Load Data from CSV (Handles Missing Columns)
+# 📥 Load Data from CSV/Excel (Handles Missing Columns & File Type)
 # ---------------------------
 @st.cache_data
-def load_csv_data():
-    """Loads CSV files from the main directory and merges them, handling missing columns."""
-    csv_files = [f for f in os.listdir(".") if f.endswith(".csv") or f.endswith(".csv.gz")]
+def load_data():
+    """Loads data from CSV or Excel files in the main directory."""
+    files = [f for f in os.listdir(".") if f.endswith((".csv", ".csv.gz", ".xlsx"))]
 
-    if not csv_files:
-        st.error("❌ No CSV files found in the main directory.")
+    if not files:
+        st.error("❌ No CSV or Excel files found in the main directory.")
         return pd.DataFrame()
 
     df_list = []
-    for file in csv_files:
+    for file in files:
         file_path = os.path.join(".", file)
         try:
-            temp_df = pd.read_csv(file_path, nrows=100000, compression="infer")  # Supports compressed & uncompressed CSVs
+            if file.endswith(".csv") or file.endswith(".csv.gz"):
+                temp_df = pd.read_csv(file_path, nrows=100000, compression="infer")
+            else:
+                temp_df = pd.read_excel(file_path, sheet_name=0)  # Read first sheet of Excel
+
             temp_df["source_file"] = file  # Track source file
             df_list.append(temp_df)
         except Exception as e:
             st.warning(f"⚠️ Skipping {file} due to error: {e}")
 
     if not df_list:
-        st.error("❌ All CSV files are empty or invalid.")
+        st.error("❌ All files are empty or invalid.")
         return pd.DataFrame()
 
     # Standardize column names
     for df in df_list:
         df.columns = df.columns.str.strip().str.lower().str.replace(" ", "_")
 
-    # Expected Columns (Based on Your CSV Structure)
-    expected_columns = ["finalizing_provider", "total_exams", "total_rvu", "total_points"]
+    # Expected Columns (Based on Your Data)
+    expected_columns = ["created_date", "final_date", "modality", "finalizing_provider",
+                        "section", "rvu", "points"]
 
-    # Find available columns across all CSVs
+    # Find available columns across all sheets
     common_columns = set(df_list[0].columns)
     for df in df_list[1:]:
         common_columns &= set(df.columns)
@@ -53,7 +58,7 @@ def load_csv_data():
     available_columns = list(common_columns & set(expected_columns))
 
     if not available_columns:
-        st.error("❌ None of the expected columns were found in the CSV files.")
+        st.error("❌ None of the expected columns were found in the uploaded files.")
         st.write("🔍 Found columns:", list(df_list[0].columns))
         return pd.DataFrame()
 
@@ -66,16 +71,22 @@ def load_csv_data():
     merged_df = pd.concat([df[available_columns] for df in df_list], ignore_index=True)
     return merged_df
 
-df = load_csv_data()
+df = load_data()
 
 # Allow Manual File Upload
-uploaded_file = st.sidebar.file_uploader("📂 Upload CSV File (Optional)", type=["csv", "gz"])
+uploaded_file = st.sidebar.file_uploader("📂 Upload CSV/Excel File (Optional)", type=["csv", "gz", "xlsx"])
 if uploaded_file:
-    df = pd.read_csv(uploaded_file, compression="infer")
+    try:
+        if uploaded_file.name.endswith(".csv") or uploaded_file.name.endswith(".gz"):
+            df = pd.read_csv(uploaded_file, compression="infer")
+        else:
+            df = pd.read_excel(uploaded_file, sheet_name=0)
+    except Exception as e:
+        st.error(f"❌ Error reading uploaded file: {e}")
 
 # Stop execution if no data
 if df.empty:
-    st.warning("⚠️ No data available. Please check your CSV files.")
+    st.warning("⚠️ No data available. Please check your files.")
     st.stop()
 
 # ---------------------------
@@ -103,8 +114,8 @@ if df.empty:
 # Aggregated KPIs Display (Only if available)
 # ---------------------------
 st.markdown("## 📊 Aggregated KPIs")
-columns_to_display = ["total_exams", "total_rvu", "total_points"]
-metrics = {"total_exams": "📝 Total Exams", "total_rvu": "⚖️ Total RVU", "total_points": "🔢 Total Points"}
+columns_to_display = ["rvu", "points"]
+metrics = {"rvu": "⚖️ Total RVU", "points": "🔢 Total Points"}
 
 columns = st.columns(len(columns_to_display))
 for i, col_name in enumerate(columns_to_display):
@@ -134,7 +145,7 @@ st.markdown(
        ```
        git init
        git add .
-       git commit -m "Fixed KeyError by dynamically handling missing columns"
+       git commit -m "Updated app to support Excel files and fix column issues"
        git branch -M main
        git remote add origin https://github.com/gibsona83/MILVops.git
        git push -u origin main
@@ -143,6 +154,6 @@ st.markdown(
        - Go to **[Streamlit Cloud](https://share.streamlit.io/)**
        - Connect your GitHub repository
        - Set `app.py` as the main entry point.
-       - Ensure CSV files are **in the main directory** (or use manual upload).
+       - Ensure CSV/Excel files are **in the main directory** (or use manual upload).
     """
 )
