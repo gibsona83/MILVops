@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
-import seaborn as sns
 
 # Streamlit Page Config
 st.set_page_config(page_title="RVU Daily Master Dashboard", layout="wide")
@@ -37,15 +36,18 @@ if uploaded_file:
     # Visualization 1: Daily Productivity
     st.subheader("📈 Daily Productivity")
     fig, ax = plt.subplots(figsize=(12, 5))
-    sns.lineplot(data=filtered_df, x='Date', y='Points', hue='Author', marker="o", ax=ax)
+    for author in filtered_df['Author'].unique():
+        subset = filtered_df[filtered_df['Author'] == author]
+        ax.plot(subset['Date'], subset['Points'], marker="o", label=author)
     ax.set_title("Points by Date")
     ax.set_ylabel("Points")
+    ax.legend()
     st.pyplot(fig)
     
     # Visualization 2: Turnaround Time Analysis
     st.subheader("⏳ Turnaround Time Analysis")
     fig, ax = plt.subplots(figsize=(12, 5))
-    sns.boxplot(data=filtered_df, x='Author', y=filtered_df['Turnaround'].dt.total_seconds()/60, ax=ax)
+    ax.boxplot([filtered_df.loc[filtered_df['Author'] == author, 'Turnaround'].dt.total_seconds()/60 for author in filtered_df['Author'].unique()], labels=filtered_df['Author'].unique())
     ax.set_title("Turnaround Time per Radiologist (Minutes)")
     ax.set_ylabel("Turnaround Time (Minutes)")
     ax.set_xticklabels(ax.get_xticklabels(), rotation=45)
@@ -53,8 +55,9 @@ if uploaded_file:
     
     # Visualization 3: Shift-based Performance
     st.subheader("🌙 Shift-Based Performance")
+    shift_summary = filtered_df.groupby('shift')['Points'].sum()
     fig, ax = plt.subplots(figsize=(12, 5))
-    sns.barplot(data=filtered_df, x='shift', y='Points', estimator=sum, ci=None, ax=ax)
+    ax.bar(shift_summary.index, shift_summary.values)
     ax.set_title("Total Points per Shift")
     ax.set_ylabel("Total Points")
     st.pyplot(fig)
@@ -62,7 +65,7 @@ if uploaded_file:
     # Visualization 4: Points per Procedure Trends
     st.subheader("📊 Points per Procedure Trends")
     fig, ax = plt.subplots(figsize=(12, 5))
-    sns.scatterplot(data=filtered_df, x='Procedure', y='Points', hue='Author', ax=ax)
+    ax.scatter(filtered_df['Procedure'], filtered_df['Points'], c='blue', alpha=0.5)
     ax.set_title("Points vs. Procedures")
     ax.set_xlabel("Procedures")
     ax.set_ylabel("Points")
