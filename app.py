@@ -14,22 +14,18 @@ st.title("MILV Diagnostic Radiology")
 st.caption("*Excludes mammo and IR modalities*")
 
 # ---------------------------
-# 📥 Load Data from CSV/Excel
+# 📥 Load Data from CSV/Excel (Root Directory, No 'data/' Folder)
 # ---------------------------
-DATA_FOLDER = "data/"  # Folder where CSV files are stored
+DATA_FOLDER = "."  # Use the main directory instead of 'data/'
 
 @st.cache_data
 def load_csv_data():
-    """Loads all CSV files from the data folder, merges them into a single DataFrame."""
-    if not os.path.exists(DATA_FOLDER):
-        st.error(f"Data folder '{DATA_FOLDER}' not found.")
-        return pd.DataFrame()
-
-    # Get all CSV files
+    """Loads all CSV files from the main directory, merges them into a single DataFrame."""
+    # Get all CSV files from the root directory
     csv_files = [f for f in os.listdir(DATA_FOLDER) if f.endswith(".csv")]
 
     if not csv_files:
-        st.error("No CSV files found in the data folder.")
+        st.error("❌ No CSV files found in the main directory.")
         return pd.DataFrame()
 
     df_list = []
@@ -40,11 +36,11 @@ def load_csv_data():
             temp_df["source_file"] = file  # Track source file
             df_list.append(temp_df)
         except Exception as e:
-            st.warning(f"Skipping {file} due to error: {e}")
+            st.warning(f"⚠️ Skipping {file} due to error: {e}")
 
     # Ensure we have valid data
     if not df_list:
-        st.error("All CSV files are empty or invalid.")
+        st.error("❌ All CSV files are empty or invalid.")
         return pd.DataFrame()
 
     # Standardize column names (remove spaces, lowercase)
@@ -57,7 +53,7 @@ def load_csv_data():
         common_columns &= set(df.columns)
 
     if not common_columns:
-        st.error("No common columns found across CSV files.")
+        st.error("❌ No common columns found across CSV files.")
         return pd.DataFrame()
 
     # Merge only common columns
@@ -100,3 +96,21 @@ section_options = ["ALL"] + sorted(df["section"].dropna().unique())
 selected_sections = st.sidebar.multiselect("🏥 Select Sections", section_options, default=["ALL"])
 if "ALL" not in selected_sections:
     df = df[df["section"].isin(selected_sections)]
+
+# Download CSV
+csv_data = df.to_csv(index=False).encode("utf-8")
+st.sidebar.download_button(label=f"📥 Download {len(df):,} rows as CSV", data=csv_data, file_name="filtered_data.csv", mime="text/csv")
+
+if df.empty:
+    st.warning("No data after applying filters. Adjust filters to see results.")
+    st.stop()
+
+# ---------------------------
+# Aggregated KPIs Display
+# ---------------------------
+st.markdown("## 📊 Aggregated KPIs")
+col1, col2, col3, col4 = st.columns(4)
+col1.metric("📝 Total Exams", f"{len(df):,}")
+col2.metric("⚖️ Total RVU", f"{df['rvu'].sum():,.2f}")
+col3.metric("📊 Avg RVU/Exam", f"{df['rvu_per_exam'].mean():,.2f}")
+col4.metric("⏳ Avg TAT (mins)", f"{df['tat'].mean():,.2f}")
