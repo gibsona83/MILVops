@@ -13,7 +13,7 @@ st.title("MILV Diagnostic Radiology")
 st.caption("*Excludes mammo and IR modalities*")
 
 # ---------------------------
-# 📥 Load Data from CSV/Excel (Handles Missing Columns & File Type)
+# 📥 Load Data from CSV/Excel (Handles Column Name Mismatch)
 # ---------------------------
 @st.cache_data
 def load_data():
@@ -31,7 +31,7 @@ def load_data():
             if file.endswith(".csv") or file.endswith(".csv.gz"):
                 temp_df = pd.read_csv(file_path, nrows=100000, compression="infer")
             else:
-                temp_df = pd.read_excel(file_path, sheet_name=0)  # Read first sheet of Excel
+                temp_df = pd.read_excel(file_path, sheet_name=0, engine="openpyxl")  # Ensures Excel files load properly
 
             temp_df["source_file"] = file  # Track source file
             df_list.append(temp_df)
@@ -46,9 +46,8 @@ def load_data():
     for df in df_list:
         df.columns = df.columns.str.strip().str.lower().str.replace(" ", "_")
 
-    # Expected Columns (Based on Your Data)
-    expected_columns = ["created_date", "final_date", "modality", "finalizing_provider",
-                        "section", "rvu", "points"]
+    # Expected Columns (Updated Based on Your Data)
+    expected_columns = ["finalizing_provider", "total_exams", "total_rvu", "total_points"]
 
     # Find available columns across all sheets
     common_columns = set(df_list[0].columns)
@@ -80,7 +79,7 @@ if uploaded_file:
         if uploaded_file.name.endswith(".csv") or uploaded_file.name.endswith(".gz"):
             df = pd.read_csv(uploaded_file, compression="infer")
         else:
-            df = pd.read_excel(uploaded_file, sheet_name=0)
+            df = pd.read_excel(uploaded_file, sheet_name=0, engine="openpyxl")
     except Exception as e:
         st.error(f"❌ Error reading uploaded file: {e}")
 
@@ -114,8 +113,8 @@ if df.empty:
 # Aggregated KPIs Display (Only if available)
 # ---------------------------
 st.markdown("## 📊 Aggregated KPIs")
-columns_to_display = ["rvu", "points"]
-metrics = {"rvu": "⚖️ Total RVU", "points": "🔢 Total Points"}
+columns_to_display = ["total_exams", "total_rvu", "total_points"]
+metrics = {"total_exams": "📝 Total Exams", "total_rvu": "⚖️ Total RVU", "total_points": "🔢 Total Points"}
 
 columns = st.columns(len(columns_to_display))
 for i, col_name in enumerate(columns_to_display):
@@ -145,7 +144,7 @@ st.markdown(
        ```
        git init
        git add .
-       git commit -m "Updated app to support Excel files and fix column issues"
+       git commit -m "Fixed column name mismatch and added Excel support"
        git branch -M main
        git remote add origin https://github.com/gibsona83/MILVops.git
        git push -u origin main
