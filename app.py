@@ -16,6 +16,7 @@ if uploaded_file:
     # Data Cleaning
     df = df.drop(columns=[col for col in df.columns if "Unnamed" in col], errors='ignore')
     df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
+    df['shift'] = pd.to_numeric(df['shift'], errors='coerce')
     
     # Ensure the column is treated as a string before conversion
     df['Turnaround'] = df['Turnaround'].astype(str).str.strip()
@@ -25,6 +26,10 @@ if uploaded_file:
     
     # Convert to timedelta, setting invalid values to NaT
     df['Turnaround'] = pd.to_timedelta(df['Turnaround'], errors='coerce')
+    
+    # Calculate Points per Half-Day and Procedures per Half-Day
+    df['Points per Half-Day'] = df['Points'] / (df['shift'] * 2)
+    df['Procedures per Half-Day'] = df['Procedure'] / (df['shift'] * 2)
     
     # Sidebar Filters
     st.sidebar.header("Filters")
@@ -49,22 +54,24 @@ if uploaded_file:
     fig, ax = plt.subplots(figsize=(12, 5))
     for author in filtered_df['Author'].unique():
         subset = filtered_df[filtered_df['Author'] == author]
-        ax.plot(subset['Date'], subset['Points'], marker="o", linestyle='-', label=author, alpha=0.7)
-    ax.set_title("Points by Date")
-    ax.set_ylabel("Points")
+        ax.plot(subset['Date'], subset['Points per Half-Day'], marker="o", linestyle='-', label=author, alpha=0.7)
+    ax.set_title("Points per Half-Day by Date")
+    ax.set_ylabel("Points per Half-Day")
     ax.set_xlabel("Date")
     ax.legend(loc='upper left', bbox_to_anchor=(1,1))
     ax.grid(True, linestyle='--', alpha=0.5)
     st.pyplot(fig)
     
-    # Visualization 2: Turnaround Time Analysis
-    st.subheader("⏳ Turnaround Time Analysis")
+    # Visualization 2: Procedures per Half-Day Trends
+    st.subheader("📊 Procedures per Half-Day Trends")
     fig, ax = plt.subplots(figsize=(12, 5))
-    box_data = [filtered_df.loc[filtered_df['Author'] == author, 'Turnaround'].dt.total_seconds()/60 for author in filtered_df['Author'].unique()]
-    ax.boxplot(box_data, labels=filtered_df['Author'].unique(), vert=True, patch_artist=True)
-    ax.set_title("Turnaround Time per Radiologist (Minutes)")
-    ax.set_ylabel("Turnaround Time (Minutes)")
-    ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha='right')
+    for author in filtered_df['Author'].unique():
+        subset = filtered_df[filtered_df['Author'] == author]
+        ax.plot(subset['Date'], subset['Procedures per Half-Day'], marker="o", linestyle='-', label=author, alpha=0.7)
+    ax.set_title("Procedures per Half-Day by Date")
+    ax.set_ylabel("Procedures per Half-Day")
+    ax.set_xlabel("Date")
+    ax.legend(loc='upper left', bbox_to_anchor=(1,1))
     ax.grid(True, linestyle='--', alpha=0.5)
     st.pyplot(fig)
     
@@ -76,16 +83,6 @@ if uploaded_file:
     ax.set_title("Total Points per Shift")
     ax.set_xlabel("Total Points")
     ax.set_ylabel("Shift")
-    ax.grid(True, linestyle='--', alpha=0.5)
-    st.pyplot(fig)
-    
-    # Visualization 4: Points per Procedure Trends
-    st.subheader("📊 Points per Procedure Trends")
-    fig, ax = plt.subplots(figsize=(12, 5))
-    ax.scatter(filtered_df['Procedure'], filtered_df['Points'], c='blue', alpha=0.5, edgecolors='black')
-    ax.set_title("Points vs. Procedures")
-    ax.set_xlabel("Procedures")
-    ax.set_ylabel("Points")
     ax.grid(True, linestyle='--', alpha=0.5)
     st.pyplot(fig)
     
