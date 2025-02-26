@@ -2,31 +2,35 @@ import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 
-# 🚀 Upload File
+# ✅ Set up Streamlit Page
+st.set_page_config(page_title="RVU Dashboard", layout="wide")
+
+# 🎯 Sidebar: Upload Excel File
 st.sidebar.title("Upload New Data")
 uploaded_file = st.sidebar.file_uploader("Upload an Excel file", type=["xls", "xlsx"])
 
 if uploaded_file is not None:
     try:
-        # ✅ Load Excel file
-        df = pd.read_excel(uploaded_file, engine="openpyxl")  
+        # ✅ Load Excel File
+        df = pd.read_excel(uploaded_file, engine="openpyxl")
 
-        # ✅ Standardize column names
+        # ✅ Standardize Column Names
         df.columns = df.columns.str.strip().str.lower().str.replace(" ", "_")
 
-        # ✅ Sidebar Filters
+        # ✅ Sidebar: Add Filters
         st.sidebar.title("Filters")
-        
-        # If the file has a "radiologist" column, allow filtering by provider
+
+        # 📌 Filter by Radiologist (if column exists)
         if "radiologist" in df.columns:
             selected_radiologists = st.sidebar.multiselect(
-                "Select Radiologists", df["radiologist"].unique(), default=df["radiologist"].unique()
+                "Select Radiologists", sorted(df["radiologist"].unique()), default=df["radiologist"].unique()
             )
             df_filtered = df[df["radiologist"].isin(selected_radiologists)]
         else:
+            st.warning("⚠️ 'Radiologist' column not found. Showing all data.")
             df_filtered = df.copy()
 
-        # ✅ Ensure "Turnaround" column exists
+        # 📌 Convert "Turnaround" Column
         if "turnaround" in df_filtered.columns:
             df_filtered["turnaround"] = df_filtered["turnaround"].astype(str)
             df_filtered["turnaround"] = df_filtered["turnaround"].str.replace(r"\.", " days ", regex=True)
@@ -36,23 +40,25 @@ if uploaded_file is not None:
         else:
             avg_turnaround = None
 
-        # ✅ Display Metrics
-        st.markdown("### Key Metrics")
+        # 🎯 **Key Metrics**
+        st.markdown("## 📊 Key Metrics")
         col1, col2 = st.columns(2)
-        col1.metric("⏳ Avg Turnaround Time (mins)", round(avg_turnaround, 2))
+        col1.metric("⏳ Avg Turnaround Time (mins)", round(avg_turnaround, 2) if avg_turnaround else "N/A")
         col2.metric("📑 Total Cases", df_filtered.shape[0])
 
-        # ✅ Visualization
-        st.markdown("### Turnaround Time Distribution")
-        fig, ax = plt.subplots()
-        df_filtered["turnaround"].dt.total_seconds().div(60).hist(bins=20, alpha=0.7, ax=ax)
-        ax.set_xlabel("Turnaround Time (mins)")
-        ax.set_ylabel("Count")
-        ax.set_title("Distribution of Turnaround Time")
-        st.pyplot(fig)
+        # 📌 **Meaningful Visualization: Turnaround by Radiologist**
+        if "radiologist" in df_filtered.columns and "turnaround" in df_filtered.columns:
+            st.markdown("## 📈 Turnaround Time by Radiologist")
+            avg_turnaround_per_radiologist = df_filtered.groupby("radiologist")["turnaround"].mean().dt.total_seconds().div(60)
 
-        # ✅ Show Data Table
-        st.markdown("### Filtered Data Preview")
+            fig, ax = plt.subplots(figsize=(10, 5))
+            avg_turnaround_per_radiologist.sort_values().plot(kind="barh", ax=ax, color="skyblue")
+            ax.set_xlabel("Avg Turnaround Time (mins)")
+            ax.set_title("Turnaround Time per Radiologist")
+            st.pyplot(fig)
+
+        # 📌 **Show Filtered Data Table**
+        st.markdown("## 📝 Filtered Data Preview")
         st.dataframe(df_filtered)
 
     except Exception as e:
