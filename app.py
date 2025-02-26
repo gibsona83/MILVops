@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-import sqlite3
 import os
 
 # 🎨 MILV Branded Colors
@@ -14,29 +13,11 @@ st.title("MILV Diagnostic Radiology")
 st.caption("*Excludes mammo and IR modalities*")
 
 # ---------------------------
-# 📥 Load Data from CSV/SQLite (GitHub Source)
+# 📥 Load Data from CSV (No SQLite)
 # ---------------------------
-DATA_SOURCE = "sqlite"  # Options: "csv" or "sqlite"
-DB_PATH = "data.db"  # SQLite database file
-
-@st.cache_data
-def load_data():
-    """Loads data from SQLite or CSV based on configuration."""
-    if DATA_SOURCE == "sqlite":
-        try:
-            conn = sqlite3.connect(DB_PATH)
-            df = pd.read_sql("SELECT * FROM provider_data", conn)
-            conn.close()
-            return df
-        except Exception as e:
-            st.error(f"🚨 Error loading SQLite database: {e}")
-            return pd.DataFrame()
-    else:
-        return load_csv_data()
-
 @st.cache_data
 def load_csv_data():
-    """Loads CSV files from the main directory, limits rows for large files."""
+    """Loads CSV files from the main directory and merges them."""
     csv_files = [f for f in os.listdir(".") if f.endswith(".csv") or f.endswith(".csv.gz")]
 
     if not csv_files:
@@ -47,7 +28,7 @@ def load_csv_data():
     for file in csv_files:
         file_path = os.path.join(".", file)
         try:
-            temp_df = pd.read_csv(file_path, nrows=100000, compression='infer')  # Loads compressed & uncompressed CSVs
+            temp_df = pd.read_csv(file_path, nrows=100000, compression="infer")  # Loads compressed & uncompressed CSVs
             temp_df["source_file"] = file  # Track source file
             df_list.append(temp_df)
         except Exception as e:
@@ -75,12 +56,12 @@ def load_csv_data():
     merged_df = pd.concat([df[expected_columns] for df in df_list], ignore_index=True)
     return merged_df
 
-df = load_data()
+df = load_csv_data()
 
 # Allow Manual File Upload
 uploaded_file = st.sidebar.file_uploader("📂 Upload CSV File (Optional)", type=["csv", "gz"])
 if uploaded_file:
-    df = pd.read_csv(uploaded_file, compression='infer')
+    df = pd.read_csv(uploaded_file, compression="infer")
 
 # Stop execution if no data
 if df.empty:
@@ -139,7 +120,7 @@ st.markdown(
        ```
        git init
        git add .
-       git commit -m "Optimized app for large CSV files"
+       git commit -m "Optimized app to only use CSV files"
        git branch -M main
        git remote add origin https://github.com/gibsona83/MILVops.git
        git push -u origin main
