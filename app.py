@@ -1,23 +1,22 @@
 import streamlit as st
 import pandas as pd
-import os
 import plotly.express as px
 
 # Page Configuration
 st.set_page_config(page_title="MILV Productivity", layout="wide", page_icon="📊")
 
 # Constants
-FILE_STORAGE_PATH = "latest_rvu.xlsx"
 REQUIRED_COLUMNS = {"date", "author", "procedure", "points", "shift", 
                     "points/half day", "procedure/half"}
 COLOR_SCALE = 'Viridis'
 
 # ---- Helper Functions ----
 @st.cache_data(show_spinner=False)
-def load_data(file_path):
-    """Load and preprocess data from Excel file with caching."""
+def load_data(uploaded_file):
+    """Load and preprocess data from an uploaded Excel file."""
     try:
-        xls = pd.ExcelFile(file_path)
+        uploaded_file.seek(0)  # Reset file pointer
+        xls = pd.ExcelFile(uploaded_file)
         df = xls.parse(xls.sheet_names[0])
         
         # Clean column names
@@ -48,11 +47,11 @@ def load_data(file_path):
         
         return df
     except Exception as e:
-        st.error(f"🚨 Error: {str(e)}")
+        st.error(f"🚨 Error processing file: {str(e)}")
         return None
 
 def create_bar_chart(data, x, y, title, color_col):
-    """Helper function to create standardized bar charts"""
+    """Create standardized horizontal bar charts."""
     return px.bar(
         data.sort_values(x, ascending=False),
         x=x,
@@ -69,18 +68,16 @@ def main():
     with st.sidebar:
         st.image("milv.png", width=200)
         uploaded_file = st.file_uploader("📤 Upload File", type=["xlsx"], help="XLSX files only")
-        
-        if uploaded_file:
-            try:
-                pd.read_excel(uploaded_file).to_excel(FILE_STORAGE_PATH, index=False)
-                st.success("✅ File uploaded!")
-            except Exception as e:
-                st.error(f"❌ Upload failed: {str(e)}")
-
-    df = load_data(FILE_STORAGE_PATH) if os.path.exists(FILE_STORAGE_PATH) else None
-    if df is None:
+    
+    if not uploaded_file:
         return st.info("📁 Please upload a file to begin analysis")
-
+    
+    with st.spinner("📊 Processing data..."):
+        df = load_data(uploaded_file)
+    
+    if df is None:
+        return
+    
     # Column mapping
     col_map = {col.lower(): col for col in df.columns}
     display_cols = {k: col_map[k] for k in REQUIRED_COLUMNS}
@@ -97,12 +94,12 @@ def main():
     # Daily View Tab
     with tab1:
         st.subheader(f"🗓️ {max_date.strftime('%b %d, %Y')}")
-        df_daily = df[df[date_col] == pd.Timestamp(max_date)]
+        df_daily = df[df[date_col] == pd.Timestamp(max_date)].copy()
         
         if not df_daily.empty:
             # Provider search
-            search_term = st.text_input("🔍 Filter providers:", placeholder="Type name...")
-            filtered = df_daily[df_daily[author_col].str.contains(search_term, case=False)] if search_term else df_daily
+            search_term = st.text_input("🔍 Filter providers:", placeholder="Type name...").strip().lower()
+            filtered = df_daily[df_daily[author_col].str.lower().str.contains(search_term)] if search_term else df_daily
             
             # Metrics
             cols = st.columns(3)
@@ -165,9 +162,9 @@ def main():
 
         # Filter data
         df_range = df[
-            (df[date_col].between(pd.Timestamp(dates[0]), pd.Timestamp(dates[1])) &
+            (df[date_col].between(pd.Timestamp(dates[0]), pd.Timestamp(dates[1]))) &
             (df[author_col].isin(selected_providers))
-        ]
+        ].copy()
         
         if df_range.empty:
             return st.warning("⚠️ No data in selected range")
@@ -181,41 +178,14 @@ def main():
         # Visualizations
         col1, col2 = st.columns(2)
         with col1:
-            st.plotly_chart(
-                create_bar_chart(
-                    df_agg,
-                    display_cols["points/half day"],
-                    author_col,
-                    "🏆 Average Points/HD",
-                    display_cols["points/half day"]
-                ), use_container_width=True
-            )
+            st.plotly_chart(create_bar_chart(df_agg, display_cols["points/half day"], author_col, "🏆 Avg Points/HD", display_cols["points/half day"]), use_container_width=True)
         with col2:
-            st.plotly_chart(
-                create_bar_chart(
-                    df_agg,
-                    display_cols["procedure/half"],
-                    author_col,
-                    "⚡ Average Procedures/HD",
-                    display_cols["procedure/half"]
-                ), use_container_width=True
-            )
+            st.plotly_chart(create_bar_chart(df_agg, display_cols["procedure/half"], author_col, "⚡ Avg Procedures/HD", display_cols["procedure/half"]), use_container_width=True)
 
         # Trend lines
         st.subheader("📅 Daily Trends")
-        fig = px.line(
-            df_range.groupby(date_col).mean(numeric_only=True).reset_index(),
-            x=date_col,
-            y=[display_cols["points/half day"], display_cols["procedure/half"]],
-            markers=True,
-            title="Daily Performance Trends"
-        )
+        fig = px.line(df_range.groupby(date_col).mean(numeric_only=True).reset_index(), x=date_col, y=[display_cols["points/half day"], display_cols["procedure/half"]], markers=True, title="Daily Performance Trends")
         st.plotly_chart(fig, use_container_width=True)
-
-        # Data table
-        with st.expander("📋 View Aggregated Data"):
-            st.dataframe(df_agg.sort_values(display_cols["points/half day"], ascending=False), 
-                        use_container_width=True)
 
 if __name__ == "__main__":
     main()
