@@ -19,7 +19,7 @@ def load_data(file_path):
         xls = pd.ExcelFile(file_path)
         df = xls.parse(xls.sheet_names[0])
         
-        # Clean column names (case-insensitive)
+        # Clean column names
         df.columns = df.columns.str.strip()
         lower_columns = df.columns.str.lower()
         
@@ -52,138 +52,193 @@ def load_data(file_path):
 
 # ---- Main Application ----
 def main():
-    st.sidebar.image("milv.png", width=250)
-    uploaded_file = st.sidebar.file_uploader("Upload RVU File", type=["xlsx"])
+    # Sidebar with compact controls
+    with st.sidebar:
+        st.image("milv.png", width=200)
+        st.divider()
+        uploaded_file = st.file_uploader("📤 Upload RVU File", type=["xlsx"], help="Upload latest productivity data")
     
+    # File handling
     if uploaded_file:
         try:
             pd.read_excel(uploaded_file).to_excel(FILE_STORAGE_PATH, index=False)
-            st.success("✅ File uploaded!")
+            st.success("✅ File uploaded successfully!")
         except Exception as e:
-            st.error(f"Upload failed: {str(e)}")
+            st.error(f"📤 Upload failed: {str(e)}")
     
+    # Load data
     df = load_data(FILE_STORAGE_PATH) if os.path.exists(FILE_STORAGE_PATH) else None
     if df is None:
-        return st.info("ℹ️ Please upload a file")
+        return st.info("📁 Please upload a file to begin analysis")
     
+    # Column mapping
     col_map = {col.lower(): col for col in df.columns}
     display_cols = {k: col_map[k] for k in REQUIRED_COLUMNS}
     
+    # Date range
     min_date, max_date = df[display_cols["date"]].min().date(), df[display_cols["date"]].max().date()
-    st.title("MILV Daily Productivity")
-    tab1, tab2, tab3 = st.tabs(["📅 Daily View", "📈 Trend Analysis", "👤 Provider Analysis"])
     
+    # Main interface
+    st.title("📊 MILV Daily Productivity Dashboard")
+    tab1, tab2, tab3 = st.tabs(["📅 Daily Snapshot", "📈 Trends Explorer", "👥 Provider Analytics"])
+    
+    # Daily View Tab
     with tab1:
-        st.subheader(f"Data for {max_date.strftime('%b %d, %Y')}")
+        st.subheader(f"🗓️ Daily Performance - {max_date.strftime('%b %d, %Y')}")
         df_latest = df[df[display_cols["date"]] == pd.Timestamp(max_date)]
         
         if not df_latest.empty:
-            st.subheader("📊 Performance")
-            search = st.text_input("Search providers:")
-            filtered_latest = df_latest[df_latest[display_cols["author"]].str.contains(search, case=False)] if search else df_latest
+            # Compact search
+            search_term = st.text_input("🔍 Search providers:", placeholder="Type to filter...")
+            filtered_latest = df_latest[df_latest[display_cols["author"]].str.contains(search_term, case=False)] if search_term else df_latest
             
+            # Metrics row
+            m1, m2, m3 = st.columns(3)
+            m1.metric("Total Providers", len(filtered_latest[display_cols["author"]].unique()))
+            m2.metric("Avg Points/HD", f"{filtered_latest[display_cols['points/half day']].mean():.1f}")
+            m3.metric("Avg Procedures/HD", f"{filtered_latest[display_cols['procedure/half']].mean():.1f}")
+            
+            # Visualizations
             col1, col2 = st.columns(2)
             with col1:
-                st.plotly_chart(px.bar(filtered_latest.sort_values(display_cols["points/half day"], ascending=False),
-                                       x=display_cols["points/half day"],
-                                       y=display_cols["author"], orientation='h',
-                                       text=display_cols["points/half day"],
-                                       color=display_cols["points/half day"],
-                                       color_continuous_scale='Viridis',
-                                       title="Points per Half-Day"),
-                                use_container_width=True)
-            with col2:
-                st.plotly_chart(px.bar(filtered_latest.sort_values(display_cols["procedure/half"], ascending=False),
-                                       x=display_cols["procedure/half"],
-                                       y=display_cols["author"], orientation='h',
-                                       text=display_cols["procedure/half"],
-                                       color=display_cols["procedure/half"],
-                                       color_continuous_scale='Viridis',
-                                       title="Procedures per Half-Day"),
-                                use_container_width=True)
+                st.plotly_chart(px.bar(
+                    filtered_latest.sort_values(display_cols["points/half day"], ascending=False),
+                    x=display_cols["points/half day"],
+                    y=display_cols["author"],
+                    orientation='h',
+                    color=display_cols["points/half day"],
+                    color_continuous_scale='Viridis',
+                    title="🏆 Points per Half-Day"
+                ), use_container_width=True)
             
-            st.subheader("🔍 Detailed Data")
-            st.dataframe(filtered_latest, use_container_width=True)
+            with col2:
+                st.plotly_chart(px.bar(
+                    filtered_latest.sort_values(display_cols["procedure/half"], ascending=False),
+                    x=display_cols["procedure/half"],
+                    y=display_cols["author"],
+                    orientation='h',
+                    color=display_cols["procedure/half"],
+                    color_continuous_scale='Viridis',
+                    title="⚡ Procedures per Half-Day"
+                ), use_container_width=True)
+            
+            # Data table
+            with st.expander("📋 View Detailed Data", expanded=True):
+                st.dataframe(filtered_latest, use_container_width=True)
     
+    # Trend Analysis Tab
     with tab2:
-        st.subheader("Date Range Analysis")
+        st.subheader("📈 Trend Explorer")
+        st.caption("Analyze performance over custom time periods")
         
-        if 'date_range' not in st.session_state:
-            st.session_state.date_range = [max_date - pd.DateOffset(days=7), max_date]
+        # Date range picker
+        col1, col2 = st.columns([1, 3])
+        with col1:
+            dates = st.date_input(
+                "🗓️ Select Range",
+                value=[max_date - pd.DateOffset(days=7), max_date],
+                min_value=min_date,
+                max_value=max_date
+            )
         
-        dates = st.date_input("Select Range (Start - End)", value=st.session_state.date_range,
-                              min_value=min_date, max_value=max_date)
         if len(dates) != 2 or dates[0] > dates[1]:
-            st.error("❌ Invalid date range")
-            return
+            st.error("❌ Invalid date selection")
+            st.stop()
         
         df_range = df[df[display_cols["date"]].between(pd.Timestamp(dates[0]), pd.Timestamp(dates[1]))]
+        
         if df_range.empty:
             st.warning("⚠️ No data in selected range")
-            return
+            st.stop()
         
-        st.subheader("📈 Trends")
-        fig = px.line(df_range, x=display_cols["date"], y=[display_cols["points/half day"], display_cols["procedure/half"]],
-                      title="Performance Trends by Date",
-                      labels={display_cols["date"]: "Date", "value": "Value"},
-                      height=400, markers=True)
-        fig.update_layout(legend_title_text="Metrics")
-        st.plotly_chart(fig, use_container_width=True)
+        # Main trend visualization
+        st.plotly_chart(px.line(
+            df_range,
+            x=display_cols["date"],
+            y=[display_cols["points/half day"], display_cols["procedure/half"]],
+            title="📈 Daily Performance Trends",
+            labels={"value": "Metric Value", "variable": "Metric"},
+            height=400,
+            markers=True
+        ).update_layout(legend_title_text="Metrics"), use_container_width=True)
         
-        st.subheader("📊 Provider Performance")
+        # Provider performance
+        st.subheader("👤 Provider Highlights")
         provider_summary = df_range.groupby(display_cols["author"]).agg({
             display_cols["points/half day"]: ['sum', 'mean'],
             display_cols["procedure/half"]: ['sum', 'mean']
         }).reset_index()
         provider_summary.columns = ['Author', 'Total Points', 'Avg Points/HD', 'Total Procedures', 'Avg Procedures/HD']
         
-        for col_name, title in [("Total Points", "Total Points per Provider"),
-                                 ("Avg Points/HD", "Avg Points per Half-Day per Provider"),
-                                 ("Total Procedures", "Total Procedures per Provider"),
-                                 ("Avg Procedures/HD", "Avg Procedures per Half-Day per Provider")]:
+        # Compact performance cards
+        tabs = st.tabs(["🏆 Points Leaders", "⚡ Procedure Leaders"])
+        with tabs[0]:
+            cols = st.columns(2)
+            cols[0].plotly_chart(px.bar(
+                provider_summary.sort_values("Total Points", ascending=False).head(5),
+                x="Total Points",
+                y="Author",
+                orientation='h',
+                title="Top 5 by Total Points"
+            ), use_container_width=True)
+            cols[1].plotly_chart(px.bar(
+                provider_summary.sort_values("Avg Points/HD", ascending=False).head(5),
+                x="Avg Points/HD",
+                y="Author",
+                orientation='h',
+                title="Top 5 by Average Points"
+            ), use_container_width=True)
+        
+        with tabs[1]:
+            cols = st.columns(2)
+            cols[0].plotly_chart(px.bar(
+                provider_summary.sort_values("Total Procedures", ascending=False).head(5),
+                x="Total Procedures",
+                y="Author",
+                orientation='h',
+                title="Top 5 by Total Procedures"
+            ), use_container_width=True)
+            cols[1].plotly_chart(px.bar(
+                provider_summary.sort_values("Avg Procedures/HD", ascending=False).head(5),
+                x="Avg Procedures/HD",
+                y="Author",
+                orientation='h',
+                title="Top 5 by Average Procedures"
+            ), use_container_width=True)
+    
+    # Provider Analysis Tab
+    with tab3:
+        st.subheader("👥 Deep Dive: Provider Analytics")
+        
+        # Compact filter controls
+        with st.container():
             col1, col2 = st.columns(2)
             with col1:
-                st.plotly_chart(px.bar(provider_summary.sort_values(col_name, ascending=True),
-                                       x=col_name, y="Author", orientation='h',
-                                       text=col_name, color=col_name,
-                                       color_continuous_scale='Viridis',
-                                       title=title),
-                                use_container_width=True)
+                prov_dates = st.date_input(
+                    "📅 Date Range",
+                    value=(min_date, max_date),
+                    min_value=min_date,
+                    max_value=max_date
+                )
+            with col2:
+                all_providers = df[display_cols["author"]].unique()
+                with st.popover("👥 Select Providers", help="Choose providers to analyze"):
+                    selected_providers = st.multiselect(
+                        "Providers:",
+                        options=all_providers,
+                        default=all_providers[:3],  # Default first 3
+                        label_visibility="collapsed"
+                    )
+                st.caption(f"🔍 {len(selected_providers)} providers selected")
         
-        st.subheader("🔍 Detailed Data")
-        search_trend = st.text_input("Search providers (Trends):")
-        filtered_range = df_range[df_range[display_cols["author"]].str.contains(search_trend, case=False)] if search_trend else df_range
-        st.dataframe(filtered_range, use_container_width=True)
-
-    with tab3:  # Provider Analysis Tab
-        st.subheader("Provider Performance Analysis")
-        
-        # Filter controls
-        col1, col2 = st.columns(2)
-        with col1:
-            prov_dates = st.date_input(
-                "Select Date Range:",
-                value=(min_date, max_date),
-                min_value=min_date,
-                max_value=max_date,
-                key="prov_date_range"
-            )
-        with col2:
-            all_providers = df[display_cols["author"]].unique()
-            selected_providers = st.multiselect(
-                "Select Providers:",
-                options=all_providers,
-                default=all_providers,
-                key="prov_select"
-            )
-        
-        # Data filtering
+        # Date validation
         try:
             start_date, end_date = pd.Timestamp(prov_dates[0]), pd.Timestamp(prov_dates[1])
         except IndexError:
             st.error("❌ Please select a valid date range")
-            return
+            st.stop()
         
+        # Data filtering
         prov_filtered = df[
             (df[display_cols["date"]] >= start_date) & 
             (df[display_cols["date"]] <= end_date) &
@@ -191,50 +246,49 @@ def main():
         ]
         
         if prov_filtered.empty:
-            return st.warning("⚠️ No data for selected filters")
+            st.warning("⚠️ No data for selected filters")
+            st.stop()
         
-        # Metrics
-        st.markdown("### 📊 Summary Statistics")
-        m1, m2, m3 = st.columns(3)
-        with m1:
-            st.metric("Total Providers", len(selected_providers))
-        with m2:
-            st.metric("Avg Points/HD", f"{prov_filtered[display_cols['points/half day']].mean():.1f}")
-        with m3:
-            st.metric("Avg Procedures/HD", f"{prov_filtered[display_cols['procedure/half']].mean():.1f}")
+        # Summary metrics
+        with st.container():
+            cols = st.columns(4)
+            cols[0].metric("Total Days", len(prov_filtered))
+            cols[1].metric("📈 Avg Points/HD", f"{prov_filtered[display_cols['points/half day']].mean():.1f}")
+            cols[2].metric("⚡ Avg Procedures/HD", f"{prov_filtered[display_cols['procedure/half']].mean():.1f}")
+            cols[3].metric("🏅 Peak Points", prov_filtered[display_cols['points/half day']].max())
         
         # Visualizations
-        st.markdown("### 📈 Performance Breakdown")
-        col1, col2 = st.columns(2)
-        with col1:
-            st.plotly_chart(px.bar(
-                prov_filtered.groupby(display_cols["author"])[display_cols["points/half day"]].mean()
-                .reset_index().sort_values(display_cols["points/half day"], ascending=False),
-                x=display_cols["points/half day"],
-                y=display_cols["author"],
-                orientation='h',
-                color=display_cols["points/half day"],
-                color_continuous_scale='Viridis',
-                title="Average Points per Half-Day"
-            ), use_container_width=True)
-        with col2:
-            st.plotly_chart(px.bar(
-                prov_filtered.groupby(display_cols["author"])[display_cols["procedure/half"]].mean()
-                .reset_index().sort_values(display_cols["procedure/half"], ascending=False),
-                x=display_cols["procedure/half"],
-                y=display_cols["author"],
-                orientation='h',
-                color=display_cols["procedure/half"],
-                color_continuous_scale='Viridis',
-                title="Average Procedures per Half-Day"
-            ), use_container_width=True)
+        with st.expander("📊 Performance Charts", expanded=True):
+            col1, col2 = st.columns(2)
+            with col1:
+                st.plotly_chart(px.bar(
+                    prov_filtered.groupby(display_cols["author"])[display_cols["points/half day"]].mean()
+                    .sort_values(ascending=False).reset_index(),
+                    x=display_cols["points/half day"],
+                    y=display_cols["author"],
+                    orientation='h',
+                    title="🏆 Average Points per Half-Day",
+                    color=display_cols["points/half day"],
+                    color_continuous_scale='Viridis'
+                ), use_container_width=True)
+            
+            with col2:
+                st.plotly_chart(px.bar(
+                    prov_filtered.groupby(display_cols["author"])[display_cols["procedure/half"]].mean()
+                    .sort_values(ascending=False).reset_index(),
+                    x=display_cols["procedure/half"],
+                    y=display_cols["author"],
+                    orientation='h',
+                    title="⚡ Average Procedures per Half-Day",
+                    color=display_cols["procedure/half"],
+                    color_continuous_scale='Viridis'
+                ), use_container_width=True)
         
         # Detailed data
-        st.markdown("### 🔍 Detailed Provider Data")
-        prov_search = st.text_input("Search within results:", key="prov_search")
-        final_data = prov_filtered[prov_filtered[display_cols["author"]].str.contains(
-            prov_search, case=False)] if prov_search else prov_filtered
-        st.dataframe(final_data, use_container_width=True)
+        with st.expander("📋 View Detailed Records", expanded=False):
+            search_term = st.text_input("🔍 Filter within results:", key="prov_search")
+            final_data = prov_filtered[prov_filtered[display_cols["author"]].str.contains(search_term, case=False)] if search_term else prov_filtered
+            st.dataframe(final_data, use_container_width=True)
 
 if __name__ == "__main__":
     main()
