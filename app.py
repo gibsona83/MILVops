@@ -2,10 +2,10 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
-# Page Configuration
+# ---- Page Configuration ----
 st.set_page_config(page_title="MILV Productivity", layout="wide", page_icon="📊")
 
-# Constants
+# ---- Constants ----
 REQUIRED_COLUMNS = {"date", "author", "procedure", "points", "shift", 
                     "points/half day", "procedure/half"}
 COLOR_SCALE = 'Viridis'
@@ -97,9 +97,17 @@ def main():
         df_daily = df[df[date_col] == pd.Timestamp(max_date)].copy()
         
         if not df_daily.empty:
-            # Provider search
-            search_term = st.text_input("🔍 Filter providers:", placeholder="Type name...").strip().lower()
-            filtered = df_daily[df_daily[author_col].str.lower().str.contains(search_term)] if search_term else df_daily
+            # Provider search with multi-select
+            selected_providers = st.multiselect(
+                "🔍 Filter providers:", 
+                options=df_daily[author_col].unique(),
+                default=None,
+                placeholder="Type or select provider...",
+                format_func=lambda x: f"👤 {x}"
+            )
+
+            # Apply filtering
+            filtered = df_daily[df_daily[author_col].isin(selected_providers)] if selected_providers else df_daily
             
             # Metrics
             cols = st.columns(3)
@@ -110,25 +118,9 @@ def main():
             # Visualizations
             col1, col2 = st.columns(2)
             with col1:
-                st.plotly_chart(
-                    create_bar_chart(
-                        filtered,
-                        display_cols["points/half day"],
-                        author_col,
-                        "🏆 Points per Half-Day",
-                        display_cols["points/half day"]
-                    ), use_container_width=True
-                )
+                st.plotly_chart(create_bar_chart(filtered, display_cols["points/half day"], author_col, "🏆 Points per Half-Day", display_cols["points/half day"]), use_container_width=True)
             with col2:
-                st.plotly_chart(
-                    create_bar_chart(
-                        filtered,
-                        display_cols["procedure/half"],
-                        author_col,
-                        "⚡ Procedures per Half-Day",
-                        display_cols["procedure/half"]
-                    ), use_container_width=True
-                )
+                st.plotly_chart(create_bar_chart(filtered, display_cols["procedure/half"], author_col, "⚡ Procedures per Half-Day", display_cols["procedure/half"]), use_container_width=True)
 
             # Data table
             with st.expander("📋 View Detailed Data"):
@@ -148,11 +140,11 @@ def main():
                 max_value=max_date
             )
         with col2:
-            all_providers = df[author_col].unique()
             selected_providers = st.multiselect(
-                "👥 Select Providers:",
-                options=all_providers,
-                default=all_providers,
+                "🔍 Filter providers:", 
+                options=df[author_col].unique(),
+                default=None,
+                placeholder="Type or select provider...",
                 format_func=lambda x: f"👤 {x}"
             )
 
@@ -162,8 +154,8 @@ def main():
 
         # Filter data
         df_range = df[
-            (df[date_col].between(pd.Timestamp(dates[0]), pd.Timestamp(dates[1]))) &
-            (df[author_col].isin(selected_providers))
+            (df[date_col].between(pd.Timestamp(dates[0]), pd.Timestamp(dates[1]))) & 
+            (df[author_col].isin(selected_providers) if selected_providers else True)
         ].copy()
         
         if df_range.empty:
