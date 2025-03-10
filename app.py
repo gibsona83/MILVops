@@ -87,45 +87,35 @@ def main():
         "⏳ Turnaround Efficiency", "📅 Trends & Reports"
     ])
 
-    # Function to apply filters for date & provider selection inside each tab
-    def filter_data(df, tab_key):
-        with st.expander(f"🔎 Filter Data ({tab_key})", expanded=True):
-            col1, col2 = st.columns(2)
-
-            # Date Selection
-            with col1:
-                date_range = st.date_input("📆 Select Date Range", [min_date, max_date], min_value=min_date, max_value=max_date, key=f"{tab_key}_date")
-
-            # Provider Selection
-            with col2:
-                selected_providers = st.multiselect("👤 Select Providers", df["author"].unique(), key=f"{tab_key}_providers")
-
-            # Apply Filters
-            df_filtered = df[
-                (df["date"] >= pd.Timestamp(date_range[0])) & 
-                (df["date"] <= pd.Timestamp(date_range[1]))
-            ]
-            if selected_providers:
-                df_filtered = df_filtered[df_filtered["author"].isin(selected_providers)]
-
-        return df_filtered
-
     # --- 📅 Daily Performance ---
     with tab1:
         st.subheader("📅 Daily Performance")
-        df_filtered = filter_data(df, "daily_performance")
+
+        # Date & Provider Filters
+        date_range = st.date_input("📆 Select Date Range", [min_date, max_date], min_value=min_date, max_value=max_date, key="daily_performance_date")
+        selected_providers = st.multiselect("👤 Select Providers", df["author"].unique(), key="daily_performance_providers")
+
+        # Apply Filters
+        df_filtered = df[(df["date"] >= pd.Timestamp(date_range[0])) & (df["date"] <= pd.Timestamp(date_range[1]))]
+        if selected_providers:
+            df_filtered = df_filtered[df_filtered["author"].isin(selected_providers)]
 
         st.metric("Total Providers", df_filtered["author"].nunique())
         st.metric("Avg Points/HD", f"{df_filtered['points/half day'].mean():.1f}")
         st.metric("Avg Procedures/HD", f"{df_filtered['procedure/half'].mean():.1f}")
 
         st.plotly_chart(px.bar(df_filtered, x="points/half day", y="author", color="points/half day", title="Points per Half-Day"))
-        st.plotly_chart(px.bar(df_filtered, x="procedure/half", y="author", color="procedure/half", title="Procedures per Half-Day"))
 
     # --- 📊 Shift-Based Productivity ---
     with tab2:
         st.subheader("📊 Shift-Based Performance")
-        df_filtered = filter_data(df, "shift_analysis")
+
+        date_range = st.date_input("📆 Select Date Range", [min_date, max_date], key="shift_analysis_date")
+        selected_providers = st.multiselect("👤 Select Providers", df["author"].unique(), key="shift_analysis_providers")
+
+        df_filtered = df[(df["date"] >= pd.Timestamp(date_range[0])) & (df["date"] <= pd.Timestamp(date_range[1]))]
+        if selected_providers:
+            df_filtered = df_filtered[df_filtered["author"].isin(selected_providers)]
 
         shift_avg = df_filtered.groupby("shift", as_index=False)[["points", "procedure"]].mean()
         st.plotly_chart(px.bar(shift_avg, x="shift", y=["points", "procedure"], barmode="group", title="Avg Points & Procedures per Shift"))
@@ -133,7 +123,13 @@ def main():
     # --- 🏆 Leaderboard ---
     with tab3:
         st.subheader("🏆 Top & Bottom Performers")
-        df_filtered = filter_data(df, "leaderboard")
+
+        date_range = st.date_input("📆 Select Date Range", [min_date, max_date], key="leaderboard_date")
+        selected_providers = st.multiselect("👤 Select Providers", df["author"].unique(), key="leaderboard_providers")
+
+        df_filtered = df[(df["date"] >= pd.Timestamp(date_range[0])) & (df["date"] <= pd.Timestamp(date_range[1]))]
+        if selected_providers:
+            df_filtered = df_filtered[df_filtered["author"].isin(selected_providers)]
 
         metric = st.selectbox("📊 Select Metric:", ["points", "procedure"], key="leaderboard_metric")
         top_5 = df_filtered.groupby("author")[metric].sum().nlargest(5).reset_index()
@@ -149,22 +145,15 @@ def main():
     # --- ⏳ Turnaround Efficiency ---
     with tab4:
         st.subheader("⏳ Turnaround Efficiency")
-        df_filtered = filter_data(df, "turnaround_efficiency")
+
+        date_range = st.date_input("📆 Select Date Range", [min_date, max_date], key="turnaround_date")
+        selected_providers = st.multiselect("👤 Select Providers", df["author"].unique(), key="turnaround_providers")
+
+        df_filtered = df[(df["date"] >= pd.Timestamp(date_range[0])) & (df["date"] <= pd.Timestamp(date_range[1]))]
+        if selected_providers:
+            df_filtered = df_filtered[df_filtered["author"].isin(selected_providers)]
 
         st.plotly_chart(px.scatter(df_filtered, x="procedure", y="points", color="shift", title="Points vs. Procedures (by Shift)"))
-
-    # --- 📅 Trends & Reports ---
-    with tab5:
-        st.subheader("📅 Date-Based Trends")
-        df_filtered = filter_data(df, "trends_reports")
-
-        df_filtered["date"] = pd.to_datetime(df_filtered["date"], errors="coerce")
-        numeric_cols = df_filtered.select_dtypes(include=["number"]).columns
-        df_trend = df_filtered.groupby("date")[numeric_cols].sum().reset_index()
-
-        st.plotly_chart(px.line(df_trend, x="date", y=["points", "procedure"], title="Daily Performance Trends"))
-
-        st.download_button("📂 Download Filtered Data", df_filtered.to_csv(index=False), file_name="filtered_data.csv", mime="text/csv")
 
 if __name__ == "__main__":
     main()
