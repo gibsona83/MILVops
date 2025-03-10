@@ -43,8 +43,8 @@ def load_data(filepath):
         # Format author names
         df["author"] = df["author"].astype(str).str.strip().str.title()
 
-        # Handle missing shift values (assume 0 for ad-hoc shifts)
-        df["shift"] = df["shift"].replace(' ', 0).astype(float).round().astype(int)
+        # Ensure shift is numeric
+        df["shift"] = pd.to_numeric(df["shift"], errors='coerce').fillna(0).astype(int)
 
         return df
     except Exception as e:
@@ -129,8 +129,12 @@ def main():
     # --- 📊 Shift-Based Productivity ---
     with tab2:
         st.subheader("🔄 Shift Performance Overview")
-        shift_avg = df.groupby("shift").mean()[["points", "procedure"]].reset_index()
-        st.plotly_chart(px.bar(shift_avg, x="shift", y=["points", "procedure"], barmode="group", title="Avg Points & Procedures per Shift"))
+
+        # Shift-based metrics
+        shift_avg = df.groupby("shift", as_index=False)[["points", "procedure"]].mean()
+
+        st.plotly_chart(px.bar(shift_avg, x="shift", y=["points", "procedure"], 
+                               barmode="group", title="Avg Points & Procedures per Shift"))
 
     # --- 🏆 Leaderboard ---
     with tab3:
