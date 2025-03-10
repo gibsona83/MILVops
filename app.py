@@ -87,18 +87,18 @@ def main():
         "⏳ Turnaround Efficiency", "📅 Trends & Reports"
     ])
 
-    # Function to apply filters for date & provider selection
-    def filter_data(df):
-        with st.expander("🔎 Filter Data", expanded=True):
+    # Function to apply filters for date & provider selection inside each tab
+    def filter_data(df, tab_name):
+        with st.expander(f"🔎 Filter Data ({tab_name})", expanded=True):
             col1, col2 = st.columns(2)
 
             # Date Selection
             with col1:
-                date_range = st.date_input("📆 Select Date Range", [min_date, max_date], min_value=min_date, max_value=max_date)
+                date_range = st.date_input("📆 Select Date Range", [min_date, max_date], min_value=min_date, max_value=max_date, key=f"{tab_name}_date")
 
             # Provider Selection
             with col2:
-                selected_providers = st.multiselect("👤 Select Providers", df["author"].unique())
+                selected_providers = st.multiselect("👤 Select Providers", df["author"].unique(), key=f"{tab_name}_providers")
 
             # Apply Filters
             df_filtered = df[
@@ -113,7 +113,7 @@ def main():
     # --- 📅 Daily Performance ---
     with tab1:
         st.subheader("📅 Daily Performance")
-        df_filtered = filter_data(df)
+        df_filtered = filter_data(df, "daily_performance")
 
         st.metric("Total Providers", df_filtered["author"].nunique())
         st.metric("Avg Points/HD", f"{df_filtered['points/half day'].mean():.1f}")
@@ -125,7 +125,7 @@ def main():
     # --- 📊 Shift-Based Productivity ---
     with tab2:
         st.subheader("📊 Shift-Based Performance")
-        df_filtered = filter_data(df)
+        df_filtered = filter_data(df, "shift_analysis")
 
         shift_avg = df_filtered.groupby("shift", as_index=False)[["points", "procedure"]].mean()
         st.plotly_chart(px.bar(shift_avg, x="shift", y=["points", "procedure"], barmode="group", title="Avg Points & Procedures per Shift"))
@@ -133,9 +133,9 @@ def main():
     # --- 🏆 Leaderboard ---
     with tab3:
         st.subheader("🏆 Top & Bottom Performers")
-        df_filtered = filter_data(df)
+        df_filtered = filter_data(df, "leaderboard")
 
-        metric = st.selectbox("📊 Select Metric:", ["points", "procedure"])
+        metric = st.selectbox("📊 Select Metric:", ["points", "procedure"], key="leaderboard_metric")
         top_5 = df_filtered.groupby("author")[metric].sum().nlargest(5).reset_index()
         bottom_5 = df_filtered.groupby("author")[metric].sum().nsmallest(5).reset_index()
 
@@ -149,14 +149,14 @@ def main():
     # --- ⏳ Turnaround Efficiency ---
     with tab4:
         st.subheader("⏳ Turnaround Efficiency")
-        df_filtered = filter_data(df)
+        df_filtered = filter_data(df, "turnaround_efficiency")
 
         st.plotly_chart(px.scatter(df_filtered, x="procedure", y="points", color="shift", title="Points vs. Procedures (by Shift)"))
 
     # --- 📅 Trends & Reports ---
     with tab5:
         st.subheader("📅 Date-Based Trends")
-        df_filtered = filter_data(df)
+        df_filtered = filter_data(df, "trends_reports")
 
         df_filtered["date"] = pd.to_datetime(df_filtered["date"], errors="coerce")
         numeric_cols = df_filtered.select_dtypes(include=["number"]).columns
