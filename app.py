@@ -51,19 +51,6 @@ def load_data(filepath):
         st.error(f"🚨 Error processing file: {str(e)}")
         return None
 
-def create_bar_chart(data, x, y, title, color_col):
-    """Create standardized horizontal bar charts."""
-    return px.bar(
-        data.sort_values(x, ascending=False),
-        x=x,
-        y=y,
-        orientation='h',
-        color=color_col,
-        color_continuous_scale=COLOR_SCALE,
-        title=title,
-        text_auto='.1f'
-    ).update_layout(showlegend=False)
-
 # ---- Main Application ----
 def main():
     with st.sidebar:
@@ -88,12 +75,8 @@ def main():
     if df is None:
         return
 
-    # Column mapping
-    display_cols = {col: col for col in REQUIRED_COLUMNS}
-    date_col, author_col = "date", "author"
-
     # Date range
-    min_date, max_date = df[date_col].min().date(), df[date_col].max().date()
+    min_date, max_date = df["date"].min().date(), df["date"].max().date()
 
     # Main interface
     st.title("📈 MILV Productivity Dashboard")
@@ -104,44 +87,58 @@ def main():
         "⏳ Turnaround Efficiency", "📅 Trends & Reports"
     ])
 
+    # Function to apply filters for date & provider selection
+    def filter_data(df):
+        col1, col2 = st.columns(2)
+
+        # Date Selection
+        with col1:
+            date_range = st.date_input("📆 Select Date Range", [min_date, max_date], min_value=min_date, max_value=max_date)
+
+        # Provider Selection
+        with col2:
+            selected_providers = st.multiselect("👤 Select Providers", df["author"].unique())
+
+        # Apply Filters
+        df_filtered = df[
+            (df["date"] >= pd.Timestamp(date_range[0])) & 
+            (df["date"] <= pd.Timestamp(date_range[1]))
+        ]
+        if selected_providers:
+            df_filtered = df_filtered[df_filtered["author"].isin(selected_providers)]
+
+        return df_filtered
+
     # --- 📅 Daily Performance ---
     with tab1:
-        st.subheader(f"🗓️ {max_date.strftime('%b %d, %Y')}")
-        df_daily = df[df[date_col] == pd.Timestamp(max_date)].copy()
+        st.subheader("📅 Daily Performance")
+        df_filtered = filter_data(df)
 
-        if not df_daily.empty:
-            # Provider search
-            selected_providers = st.multiselect("🔍 Filter providers:", df_daily[author_col].unique())
+        # Display metrics
+        st.metric("Total Providers", df_filtered["author"].nunique())
+        st.metric("Avg Points/HD", f"{df_filtered['points/half day'].mean():.1f}")
+        st.metric("Avg Procedures/HD", f"{df_filtered['procedure/half'].mean():.1f}")
 
-            # Apply filtering
-            filtered = df_daily[df_daily[author_col].isin(selected_providers)] if selected_providers else df_daily
-
-            # Metrics
-            cols = st.columns(3)
-            cols[0].metric("Total Providers", filtered[author_col].nunique())
-            cols[1].metric("Avg Points/HD", f"{filtered['points/half day'].mean():.1f}")
-            cols[2].metric("Avg Procedures/HD", f"{filtered['procedure/half'].mean():.1f}")
-
-            # Visuals
-            st.plotly_chart(create_bar_chart(filtered, "points/half day", author_col, "🏆 Points per Half-Day", "points/half day"))
-            st.plotly_chart(create_bar_chart(filtered, "procedure/half", author_col, "⚡ Procedures per Half-Day", "procedure/half"))
+        # Plot charts
+        st.plotly_chart(px.bar(df_filtered, x="points/half day", y="author", color="points/half day", title="Points per Half-Day"))
+        st.plotly_chart(px.bar(df_filtered, x="procedure/half", y="author", color="procedure/half", title="Procedures per Half-Day"))
 
     # --- 📊 Shift-Based Productivity ---
     with tab2:
-        st.subheader("🔄 Shift Performance Overview")
+        st.subheader("📊 Shift-Based Performance")
+        df_filtered = filter_data(df)
 
-        # Shift-based metrics
-        shift_avg = df.groupby("shift", as_index=False)[["points", "procedure"]].mean()
-
-        st.plotly_chart(px.bar(shift_avg, x="shift", y=["points", "procedure"], 
-                               barmode="group", title="Avg Points & Procedures per Shift"))
+        shift_avg = df_filtered.groupby("shift", as_index=False)[["points", "procedure"]].mean()
+        st.plotly_chart(px.bar(shift_avg, x="shift", y=["points", "procedure"], barmode="group", title="Avg Points & Procedures per Shift"))
 
     # --- 🏆 Leaderboard ---
     with tab3:
         st.subheader("🏆 Top & Bottom Performers")
+        df_filtered = filter_data(df)
+
         metric = st.selectbox("📊 Select Metric:", ["points", "procedure"])
-        top_5 = df.groupby("author")[metric].sum().nlargest(5).reset_index()
-        bottom_5 = df.groupby("author")[metric].sum().nsmallest(5).reset_index()
+        top_5 = df_filtered.groupby("author")[metric].sum().nlargest(5).reset_index()
+        bottom_5 = df_filtered.groupby("author")[metric].sum().nsmallest(5).reset_index()
 
         col1, col2 = st.columns(2)
         col1.subheader("🏅 Top 5 Performers")
@@ -152,14 +149,15 @@ def main():
 
     # --- ⏳ Turnaround Efficiency ---
     with tab4:
-        st.subheader("⏳ Efficiency Analysis")
-        st.plotly_chart(px.scatter(df, x="procedure", y="points", color="shift", title="Points vs. Procedures (by Shift)"))
+        st.subheader("⏳ Turnaround Efficiency")
+        df_filtered = filter_data(df)
+
+        st.plotly_chart(px.scatter(df_filtered, x="procedure", y="points", color="shift", title="Points vs. Procedures (by Shift)"))
 
     # --- 📅 Trends & Reports ---
     with tab5:
         st.subheader("📅 Date-Based Trends")
-        date_range = st.date_input("Select Date Range:", [min_date, max_date], min_value=min_date, max_value=max_date)
-        df_filtered = df[(df["date"] >= pd.Timestamp(date_range[0])) & (df["date"] <= pd.Timestamp(date_range[1]))].copy()
+        df_filtered = filter_data(df)
 
         # Ensure date is datetime and sum only numeric columns
         df_filtered["date"] = pd.to_datetime(df_filtered["date"], errors="coerce")
