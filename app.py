@@ -88,17 +88,17 @@ def main():
     ])
 
     # Function to apply filters for date & provider selection inside each tab
-    def filter_data(df, tab_name):
-        with st.expander(f"🔎 Filter Data ({tab_name})", expanded=True):
+    def filter_data(df, tab_key):
+        with st.expander(f"🔎 Filter Data ({tab_key})", expanded=True):
             col1, col2 = st.columns(2)
 
             # Date Selection
             with col1:
-                date_range = st.date_input("📆 Select Date Range", [min_date, max_date], min_value=min_date, max_value=max_date, key=f"{tab_name}_date")
+                date_range = st.date_input("📆 Select Date Range", [min_date, max_date], min_value=min_date, max_value=max_date, key=f"{tab_key}_date")
 
             # Provider Selection
             with col2:
-                selected_providers = st.multiselect("👤 Select Providers", df["author"].unique(), key=f"{tab_name}_providers")
+                selected_providers = st.multiselect("👤 Select Providers", df["author"].unique(), key=f"{tab_key}_providers")
 
             # Apply Filters
             df_filtered = df[
