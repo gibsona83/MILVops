@@ -114,12 +114,10 @@ def main():
         st.subheader("📅 Daily Performance")
         df_filtered = filter_data(df)
 
-        # Display metrics
         st.metric("Total Providers", df_filtered["author"].nunique())
         st.metric("Avg Points/HD", f"{df_filtered['points/half day'].mean():.1f}")
         st.metric("Avg Procedures/HD", f"{df_filtered['procedure/half'].mean():.1f}")
 
-        # Plot charts
         st.plotly_chart(px.bar(df_filtered, x="points/half day", y="author", color="points/half day", title="Points per Half-Day"))
         st.plotly_chart(px.bar(df_filtered, x="procedure/half", y="author", color="procedure/half", title="Procedures per Half-Day"))
 
@@ -159,14 +157,12 @@ def main():
         st.subheader("📅 Date-Based Trends")
         df_filtered = filter_data(df)
 
-        # Ensure date is datetime and sum only numeric columns
         df_filtered["date"] = pd.to_datetime(df_filtered["date"], errors="coerce")
         numeric_cols = df_filtered.select_dtypes(include=["number"]).columns
         df_trend = df_filtered.groupby("date")[numeric_cols].sum().reset_index()
 
         st.plotly_chart(px.line(df_trend, x="date", y=["points", "procedure"], title="Daily Performance Trends"))
 
-        # Export button
         st.download_button("📂 Download Filtered Data", df_filtered.to_csv(index=False), file_name="filtered_data.csv", mime="text/csv")
 
 if __name__ == "__main__":
