@@ -4,7 +4,12 @@ import plotly.express as px
 import os
 
 # ---- Page Configuration ----
-st.set_page_config(page_title="MILV Productivity", layout="wide", page_icon="📊")
+st.set_page_config(
+    page_title="MILV Productivity",
+    layout="wide",
+    page_icon="📊",
+    initial_sidebar_state="expanded"
+)
 
 # ---- Constants ----
 UPLOAD_FOLDER = "uploaded_data"
@@ -18,32 +23,24 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 # ---- Helper Functions ----
 @st.cache_data(show_spinner=False)
 def load_data(filepath):
-    """Load and preprocess data from a saved Excel file."""
+    """Load and preprocess data from Excel file."""
     try:
         xls = pd.ExcelFile(filepath)
         df = xls.parse(xls.sheet_names[0])
         
-        # Clean column names
+        # Clean and validate data
         df.columns = df.columns.str.strip().str.lower()
-        
-        # Validate required columns
         missing = REQUIRED_COLUMNS - set(df.columns)
         if missing:
             st.error(f"❌ Missing columns: {', '.join(missing).title()}")
             return None
         
-        # Convert date column
         df["date"] = pd.to_datetime(df["date"], errors="coerce").dt.normalize()
-        df.dropna(subset=["date"], inplace=True)
+        df = df.dropna(subset=["date"])
         
-        # Convert numeric columns
         numeric_cols = list(REQUIRED_COLUMNS - {"date", "author"})
         df[numeric_cols] = df[numeric_cols].apply(pd.to_numeric, errors='coerce').fillna(0)
-        
-        # Format author names
         df["author"] = df["author"].astype(str).str.strip().str.title()
-
-        # Ensure shift is numeric
         df["shift"] = pd.to_numeric(df["shift"], errors='coerce').fillna(0).astype(int)
 
         return df
@@ -51,98 +48,143 @@ def load_data(filepath):
         st.error(f"🚨 Error processing file: {str(e)}")
         return None
 
+def render_filters(df, min_date, max_date, key_suffix):
+    """Render consistent filter components with unique keys."""
+    col1, col2 = st.columns(2)
+    with col1:
+        date_range = st.date_input(
+            "📆 Date Range",
+            [min_date, max_date],
+            min_value=min_date,
+            max_value=max_date,
+            key=f"date_{key_suffix}"
+        )
+    with col2:
+        selected_providers = st.multiselect(
+            "👤 Providers",
+            df["author"].unique(),
+            key=f"providers_{key_suffix}"
+        )
+    return date_range, selected_providers
+
+def filter_data(df, date_range, selected_providers):
+    """Apply date and provider filters to dataframe."""
+    filtered = df[
+        (df["date"] >= pd.Timestamp(date_range[0])) & 
+        (df["date"] <= pd.Timestamp(date_range[1]))
+    ]
+    if selected_providers:
+        filtered = filtered[filtered["author"].isin(selected_providers)]
+    return filtered
+
 # ---- Main Application ----
 def main():
+    # ---- Sidebar ----
     with st.sidebar:
         st.image("milv.png", width=200)
-        uploaded_file = st.file_uploader("📤 Upload File", type=["xlsx"], help="XLSX files only")
+        uploaded_file = st.file_uploader(
+            "📤 Upload Excel File",
+            type=["xlsx"],
+            help="Upload latest productivity data"
+        )
 
         if uploaded_file:
-            # Save file to disk
             with open(FILE_PATH, "wb") as f:
                 f.write(uploaded_file.getbuffer())
-            st.session_state["file_uploaded"] = True  # Mark session as having a new file uploaded
+            st.session_state["file_uploaded"] = True
             st.success("✅ File uploaded successfully!")
 
-    # Load persisted file if available
+    # ---- Data Loading ----
     if os.path.exists(FILE_PATH):
         with st.spinner("📊 Loading data..."):
             df = load_data(FILE_PATH)
     else:
-        st.info("📁 No file found. Please upload one.")
+        st.info("📁 Please upload a file to begin")
         return
 
     if df is None:
         return
 
-    # Date range
     min_date, max_date = df["date"].min().date(), df["date"].max().date()
 
-    # Main interface
+    # ---- Main Interface ----
     st.title("📈 MILV Productivity Dashboard")
-    st.write(f"📂 Latest Uploaded File: `{FILE_PATH}`")
+    st.caption(f"Latest data: {max_date.strftime('%Y-%m-%d')}")
 
     tab1, tab2, tab3, tab4, tab5 = st.tabs([
-        "📅 Daily Performance", "📊 Shift Analysis", "🏆 Leaderboard", 
-        "⏳ Turnaround Efficiency", "📅 Trends & Reports"
+        "📅 Daily Performance", 
+        "📊 Shift Analysis", 
+        "🏆 Leaderboard", 
+        "⏳ Turnaround", 
+        "📈 Trends"
     ])
 
-    # --- 📅 Daily Performance ---
+    # ---- Daily Performance Tab ----
     with tab1:
-        st.subheader("📅 Daily Performance")
+        st.subheader("Daily Performance Metrics")
+        date_range, providers = render_filters(df, min_date, max_date, "daily")
+        filtered = filter_data(df, date_range, providers)
 
-        # Date & Provider Filters
-        date_range = st.date_input("📆 Select Date Range", [min_date, max_date], min_value=min_date, max_value=max_date, key="daily_performance_date")
-        selected_providers = st.multiselect("👤 Select Providers", df["author"].unique(), key="daily_performance_providers")
+        cols = st.columns(3)
+        cols[0].metric("Total Providers", filtered["author"].nunique())
+        cols[1].metric("Avg Points/HD", f"{filtered['points/half day'].mean():.1f}")
+        cols[2].metric("Avg Procedures/HD", f"{filtered['procedure/half'].mean():.1f}")
 
-        # Apply Filters
-        df_filtered = df[(df["date"] >= pd.Timestamp(date_range[0])) & (df["date"] <= pd.Timestamp(date_range[1]))]
-        if selected_providers:
-            df_filtered = df_filtered[df_filtered["author"].isin(selected_providers)]
+        st.plotly_chart(px.scatter(
+            filtered,
+            x="date",
+            y="points",
+            color="author",
+            title="Daily Points Distribution"
+        ), use_container_width=True)
 
-        st.metric("Total Providers", df_filtered["author"].nunique())
-        st.metric("Avg Points/HD", f"{df_filtered['points/half day'].mean():.1f}")
-        st.metric("Avg Procedures/HD", f"{df_filtered['procedure/half'].mean():.1f}")
-
-    # --- 📊 Shift-Based Productivity ---
+    # ---- Shift Analysis Tab ----
     with tab2:
-        st.subheader("📊 Shift Performance Overview")
+        st.subheader("Shift-Based Productivity")
+        date_range, providers = render_filters(df, min_date, max_date, "shift")
+        filtered = filter_data(df, date_range, providers)
 
-        # Date & Provider Filters
-        date_range = st.date_input("📆 Select Date Range", [min_date, max_date], key="shift_analysis_date")
-        selected_providers = st.multiselect("👤 Select Providers", df["author"].unique(), key="shift_analysis_providers")
+        shift_stats = filtered.groupby("shift").agg({
+            "points": "mean",
+            "procedure": "mean"
+        }).reset_index()
 
-        # Apply Filters
-        df_filtered = df[(df["date"] >= pd.Timestamp(date_range[0])) & (df["date"] <= pd.Timestamp(date_range[1]))]
-        if selected_providers:
-            df_filtered = df_filtered[df_filtered["author"].isin(selected_providers)]
+        st.plotly_chart(px.bar(
+            shift_stats,
+            x="shift",
+            y=["points", "procedure"],
+            barmode="group",
+            title="Average Productivity per Shift",
+            labels={"value": "Average"}
+        ), use_container_width=True)
 
-        shift_avg = df_filtered.groupby("shift", as_index=False)[["points", "procedure"]].mean()
-        st.plotly_chart(px.bar(shift_avg, x="shift", y=["points", "procedure"], barmode="group", title="Avg Points & Procedures per Shift"))
-
-    # --- 🏆 Leaderboard ---
+    # ---- Leaderboard Tab ----
     with tab3:
-        st.subheader("🏆 Top & Bottom Performers")
+        st.subheader("Provider Leaderboard")
+        date_range, providers = render_filters(df, min_date, max_date, "leaderboard")
+        filtered = filter_data(df, date_range, providers)
 
-        # Date & Provider Filters
-        date_range = st.date_input("📆 Select Date Range", [min_date, max_date], key="leaderboard_date")
-        selected_providers = st.multiselect("👤 Select Providers", df["author"].unique(), key="leaderboard_providers")
+        if not filtered.empty:
+            leaderboard = filtered.groupby("author").agg({
+                "points": "sum",
+                "procedure": "sum"
+            }).sort_values("points", ascending=False)
 
-    # --- ⏳ Turnaround Efficiency ---
+            st.dataframe(
+                leaderboard.style.highlight_max(axis=0),
+                use_container_width=True
+            )
+
+    # ---- Remaining Tabs (Placeholder Implementation) ----
     with tab4:
-        st.subheader("⏳ Turnaround Efficiency")
+        st.subheader("Turnaround Efficiency")
+        date_range, providers = render_filters(df, min_date, max_date, "turnaround")
+        st.info("⏳ Turnaround metrics coming soon...")
 
-        # Date & Provider Filters
-        date_range = st.date_input("📆 Select Date Range", [min_date, max_date], key="turnaround_date")
-        selected_providers = st.multiselect("👤 Select Providers", df["author"].unique(), key="turnaround_providers")
-
-    # --- 📅 Trends & Reports ---
     with tab5:
-        st.subheader("📅 Date-Based Trends")
-
-        # Date & Provider Filters
-        date_range = st.date_input("📆 Select Date Range", [min_date, max_date], key="trends_date")
-        selected_providers = st.multiselect("👤 Select Providers", df["author"].unique(), key="trends_providers")
+        st.subheader("Long-Term Trends")
+        date_range, providers = render_filters(df, min_date, max_date, "trends")
+        st.info("📈 Trend analysis coming soon...")
 
 if __name__ == "__main__":
     main()
