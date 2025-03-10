@@ -159,9 +159,14 @@ def main():
     with tab5:
         st.subheader("📅 Date-Based Trends")
         date_range = st.date_input("Select Date Range:", [min_date, max_date], min_value=min_date, max_value=max_date)
-        df_filtered = df[(df["date"] >= pd.Timestamp(date_range[0])) & (df["date"] <= pd.Timestamp(date_range[1]))]
+        df_filtered = df[(df["date"] >= pd.Timestamp(date_range[0])) & (df["date"] <= pd.Timestamp(date_range[1]))].copy()
 
-        st.plotly_chart(px.line(df_filtered.groupby("date").sum().reset_index(), x="date", y=["points", "procedure"], title="Daily Performance Trends"))
+        # Ensure date is datetime and sum only numeric columns
+        df_filtered["date"] = pd.to_datetime(df_filtered["date"], errors="coerce")
+        numeric_cols = df_filtered.select_dtypes(include=["number"]).columns
+        df_trend = df_filtered.groupby("date")[numeric_cols].sum().reset_index()
+
+        st.plotly_chart(px.line(df_trend, x="date", y=["points", "procedure"], title="Daily Performance Trends"))
 
         # Export button
         st.download_button("📂 Download Filtered Data", df_filtered.to_csv(index=False), file_name="filtered_data.csv", mime="text/csv")
