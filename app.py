@@ -1,50 +1,51 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import os
 
 # ---- Page Configuration ----
 st.set_page_config(page_title="MILV Productivity", layout="wide", page_icon="📊")
 
 # ---- Constants ----
-REQUIRED_COLUMNS = {"date", "author", "procedure", "points", "shift", 
-                    "points/half day", "procedure/half"}
+UPLOAD_FOLDER = "uploaded_data"
+FILE_PATH = os.path.join(UPLOAD_FOLDER, "latest_upload.xlsx")
+REQUIRED_COLUMNS = {"date", "author", "procedure", "points", "shift", "points/half day", "procedure/half"}
 COLOR_SCALE = 'Viridis'
+
+# Ensure the upload folder exists
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 # ---- Helper Functions ----
 @st.cache_data(show_spinner=False)
-def load_data(uploaded_file):
-    """Load and preprocess data from an uploaded Excel file."""
+def load_data(filepath):
+    """Load and preprocess data from a saved Excel file."""
     try:
-        uploaded_file.seek(0)  # Reset file pointer
-        xls = pd.ExcelFile(uploaded_file)
+        xls = pd.ExcelFile(filepath)
         df = xls.parse(xls.sheet_names[0])
         
         # Clean column names
-        df.columns = df.columns.str.strip()
-        lower_columns = df.columns.str.lower()
+        df.columns = df.columns.str.strip().str.lower()
         
         # Validate required columns
-        missing = [col for col in REQUIRED_COLUMNS if col not in lower_columns]
+        missing = REQUIRED_COLUMNS - set(df.columns)
         if missing:
             st.error(f"❌ Missing columns: {', '.join(missing).title()}")
             return None
         
-        # Map actual column names
-        col_map = {col.lower(): col for col in df.columns}
-        
-        # Process date column
-        date_col = col_map["date"]
-        df[date_col] = pd.to_datetime(df[date_col], errors="coerce").dt.normalize()
-        df.dropna(subset=[date_col], inplace=True)
+        # Convert date column
+        df["date"] = pd.to_datetime(df["date"], errors="coerce").dt.normalize()
+        df.dropna(subset=["date"], inplace=True)
         
         # Convert numeric columns
-        numeric_cols = [col_map[col] for col in REQUIRED_COLUMNS if col not in ["date", "author"]]
+        numeric_cols = list(REQUIRED_COLUMNS - {"date", "author"})
         df[numeric_cols] = df[numeric_cols].apply(pd.to_numeric, errors='coerce').fillna(0)
         
         # Format author names
-        author_col = col_map["author"]
-        df[author_col] = df[author_col].astype(str).str.strip().str.title()
-        
+        df["author"] = df["author"].astype(str).str.strip().str.title()
+
+        # Handle missing shift values (assume 0 for ad-hoc shifts)
+        df["shift"] = df["shift"].replace(' ', 0).astype(float).round().astype(int)
+
         return df
     except Exception as e:
         st.error(f"🚨 Error processing file: {str(e)}")
@@ -68,116 +69,98 @@ def main():
     with st.sidebar:
         st.image("milv.png", width=200)
         uploaded_file = st.file_uploader("📤 Upload File", type=["xlsx"], help="XLSX files only")
-    
-    if not uploaded_file:
-        return st.info("📁 Please upload a file to begin analysis")
-    
-    with st.spinner("📊 Processing data..."):
-        df = load_data(uploaded_file)
-    
+
+        if uploaded_file:
+            # Save file to disk
+            with open(FILE_PATH, "wb") as f:
+                f.write(uploaded_file.getbuffer())
+            st.session_state["file_uploaded"] = True  # Mark session as having a new file uploaded
+            st.success("✅ File uploaded successfully!")
+
+    # Load persisted file if available
+    if os.path.exists(FILE_PATH):
+        with st.spinner("📊 Loading data..."):
+            df = load_data(FILE_PATH)
+    else:
+        st.info("📁 No file found. Please upload one.")
+        return
+
     if df is None:
         return
-    
+
     # Column mapping
-    col_map = {col.lower(): col for col in df.columns}
-    display_cols = {k: col_map[k] for k in REQUIRED_COLUMNS}
-    date_col = display_cols["date"]
-    author_col = display_cols["author"]
+    display_cols = {col: col for col in REQUIRED_COLUMNS}
+    date_col, author_col = "date", "author"
 
     # Date range
     min_date, max_date = df[date_col].min().date(), df[date_col].max().date()
 
     # Main interface
     st.title("📈 MILV Productivity Dashboard")
-    tab1, tab2 = st.tabs(["📅 Daily Performance", "📈 Trend Analysis"])
+    st.write(f"📂 Latest Uploaded File: `{FILE_PATH}`")
 
-    # Daily View Tab
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+        "📅 Daily Performance", "📊 Shift Analysis", "🏆 Leaderboard", 
+        "⏳ Turnaround Efficiency", "📅 Trends & Reports"
+    ])
+
+    # --- 📅 Daily Performance ---
     with tab1:
         st.subheader(f"🗓️ {max_date.strftime('%b %d, %Y')}")
         df_daily = df[df[date_col] == pd.Timestamp(max_date)].copy()
-        
+
         if not df_daily.empty:
-            # Provider search with multi-select
-            selected_providers = st.multiselect(
-                "🔍 Filter providers:", 
-                options=df_daily[author_col].unique(),
-                default=None,
-                placeholder="Type or select provider...",
-                format_func=lambda x: f"👤 {x}"
-            )
+            # Provider search
+            selected_providers = st.multiselect("🔍 Filter providers:", df_daily[author_col].unique())
 
             # Apply filtering
             filtered = df_daily[df_daily[author_col].isin(selected_providers)] if selected_providers else df_daily
-            
+
             # Metrics
             cols = st.columns(3)
             cols[0].metric("Total Providers", filtered[author_col].nunique())
-            cols[1].metric("Avg Points/HD", f"{filtered[display_cols['points/half day']].mean():.1f}")
-            cols[2].metric("Avg Procedures/HD", f"{filtered[display_cols['procedure/half']].mean():.1f}")
+            cols[1].metric("Avg Points/HD", f"{filtered['points/half day'].mean():.1f}")
+            cols[2].metric("Avg Procedures/HD", f"{filtered['procedure/half'].mean():.1f}")
 
-            # Visualizations
-            col1, col2 = st.columns(2)
-            with col1:
-                st.plotly_chart(create_bar_chart(filtered, display_cols["points/half day"], author_col, "🏆 Points per Half-Day", display_cols["points/half day"]), use_container_width=True)
-            with col2:
-                st.plotly_chart(create_bar_chart(filtered, display_cols["procedure/half"], author_col, "⚡ Procedures per Half-Day", display_cols["procedure/half"]), use_container_width=True)
+            # Visuals
+            st.plotly_chart(create_bar_chart(filtered, "points/half day", author_col, "🏆 Points per Half-Day", "points/half day"))
+            st.plotly_chart(create_bar_chart(filtered, "procedure/half", author_col, "⚡ Procedures per Half-Day", "procedure/half"))
 
-            # Data table
-            with st.expander("📋 View Detailed Data"):
-                st.dataframe(filtered, use_container_width=True)
-
-    # Trend Analysis Tab
+    # --- 📊 Shift-Based Productivity ---
     with tab2:
-        st.subheader("📈 Date Range Analysis")
-        
-        # Controls
+        st.subheader("🔄 Shift Performance Overview")
+        shift_avg = df.groupby("shift").mean()[["points", "procedure"]].reset_index()
+        st.plotly_chart(px.bar(shift_avg, x="shift", y=["points", "procedure"], barmode="group", title="Avg Points & Procedures per Shift"))
+
+    # --- 🏆 Leaderboard ---
+    with tab3:
+        st.subheader("🏆 Top & Bottom Performers")
+        metric = st.selectbox("📊 Select Metric:", ["points", "procedure"])
+        top_5 = df.groupby("author")[metric].sum().nlargest(5).reset_index()
+        bottom_5 = df.groupby("author")[metric].sum().nsmallest(5).reset_index()
+
         col1, col2 = st.columns(2)
-        with col1:
-            dates = st.date_input(
-                "🗓️ Date Range",
-                value=[max_date - pd.DateOffset(days=7), max_date],
-                min_value=min_date,
-                max_value=max_date
-            )
-        with col2:
-            selected_providers = st.multiselect(
-                "🔍 Filter providers:", 
-                options=df[author_col].unique(),
-                default=None,
-                placeholder="Type or select provider...",
-                format_func=lambda x: f"👤 {x}"
-            )
+        col1.subheader("🏅 Top 5 Performers")
+        col1.dataframe(top_5)
 
-        if len(dates) != 2 or dates[0] > dates[1]:
-            st.error("❌ Invalid date range")
-            st.stop()
+        col2.subheader("📉 Bottom 5 Performers")
+        col2.dataframe(bottom_5)
 
-        # Filter data
-        df_range = df[
-            (df[date_col].between(pd.Timestamp(dates[0]), pd.Timestamp(dates[1]))) & 
-            (df[author_col].isin(selected_providers) if selected_providers else True)
-        ].copy()
-        
-        if df_range.empty:
-            return st.warning("⚠️ No data in selected range")
+    # --- ⏳ Turnaround Efficiency ---
+    with tab4:
+        st.subheader("⏳ Efficiency Analysis")
+        st.plotly_chart(px.scatter(df, x="procedure", y="points", color="shift", title="Points vs. Procedures (by Shift)"))
 
-        # Aggregate data
-        df_agg = df_range.groupby(author_col).agg({
-            display_cols["points/half day"]: 'mean',
-            display_cols["procedure/half"]: 'mean'
-        }).reset_index()
+    # --- 📅 Trends & Reports ---
+    with tab5:
+        st.subheader("📅 Date-Based Trends")
+        date_range = st.date_input("Select Date Range:", [min_date, max_date], min_value=min_date, max_value=max_date)
+        df_filtered = df[(df["date"] >= pd.Timestamp(date_range[0])) & (df["date"] <= pd.Timestamp(date_range[1]))]
 
-        # Visualizations
-        col1, col2 = st.columns(2)
-        with col1:
-            st.plotly_chart(create_bar_chart(df_agg, display_cols["points/half day"], author_col, "🏆 Avg Points/HD", display_cols["points/half day"]), use_container_width=True)
-        with col2:
-            st.plotly_chart(create_bar_chart(df_agg, display_cols["procedure/half"], author_col, "⚡ Avg Procedures/HD", display_cols["procedure/half"]), use_container_width=True)
+        st.plotly_chart(px.line(df_filtered.groupby("date").sum().reset_index(), x="date", y=["points", "procedure"], title="Daily Performance Trends"))
 
-        # Trend lines
-        st.subheader("📅 Daily Trends")
-        fig = px.line(df_range.groupby(date_col).mean(numeric_only=True).reset_index(), x=date_col, y=[display_cols["points/half day"], display_cols["procedure/half"]], markers=True, title="Daily Performance Trends")
-        st.plotly_chart(fig, use_container_width=True)
+        # Export button
+        st.download_button("📂 Download Filtered Data", df_filtered.to_csv(index=False), file_name="filtered_data.csv", mime="text/csv")
 
 if __name__ == "__main__":
     main()
