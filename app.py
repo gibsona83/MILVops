@@ -89,23 +89,24 @@ def main():
 
     # Function to apply filters for date & provider selection
     def filter_data(df):
-        col1, col2 = st.columns(2)
+        with st.expander("🔎 Filter Data", expanded=True):
+            col1, col2 = st.columns(2)
 
-        # Date Selection
-        with col1:
-            date_range = st.date_input("📆 Select Date Range", [min_date, max_date], min_value=min_date, max_value=max_date)
+            # Date Selection
+            with col1:
+                date_range = st.date_input("📆 Select Date Range", [min_date, max_date], min_value=min_date, max_value=max_date)
 
-        # Provider Selection
-        with col2:
-            selected_providers = st.multiselect("👤 Select Providers", df["author"].unique())
+            # Provider Selection
+            with col2:
+                selected_providers = st.multiselect("👤 Select Providers", df["author"].unique())
 
-        # Apply Filters
-        df_filtered = df[
-            (df["date"] >= pd.Timestamp(date_range[0])) & 
-            (df["date"] <= pd.Timestamp(date_range[1]))
-        ]
-        if selected_providers:
-            df_filtered = df_filtered[df_filtered["author"].isin(selected_providers)]
+            # Apply Filters
+            df_filtered = df[
+                (df["date"] >= pd.Timestamp(date_range[0])) & 
+                (df["date"] <= pd.Timestamp(date_range[1]))
+            ]
+            if selected_providers:
+                df_filtered = df_filtered[df_filtered["author"].isin(selected_providers)]
 
         return df_filtered
 
