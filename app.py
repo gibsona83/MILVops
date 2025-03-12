@@ -1,190 +1,85 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import os
+import io
 
-# ---- Page Configuration ----
-st.set_page_config(
-    page_title="MILV Productivity",
-    layout="wide",
-    page_icon="📊",
-    initial_sidebar_state="expanded"
-)
+# Page configuration
+st.set_page_config(page_title="Radiology Productivity Dashboard", layout="wide")
 
-# ---- Constants ----
-UPLOAD_FOLDER = "uploaded_data"
-FILE_PATH = os.path.join(UPLOAD_FOLDER, "latest_upload.xlsx")
-REQUIRED_COLUMNS = {"date", "author", "procedure", "points", "shift", "points/half day", "procedure/half"}
-COLOR_SCALE = 'Viridis'
+# Sidebar for file upload
+st.sidebar.header("Upload Files")
+csv_file = st.sidebar.file_uploader("Upload CSV File", type=["csv"])
+excel_file = st.sidebar.file_uploader("Upload Excel File", type=["xlsx"])
 
-# Ensure the upload folder exists
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+if csv_file and excel_file:
+    # Load CSV File
+    csv_df = pd.read_csv(csv_file)
 
-# ---- Helper Functions ----
-@st.cache_data(show_spinner=False)
-def load_data(filepath):
-    """Load and preprocess data from Excel file."""
-    try:
-        xls = pd.ExcelFile(filepath)
-        df = xls.parse(xls.sheet_names[0])
-        
-        # Clean and validate data
-        df.columns = df.columns.str.strip().str.lower()
-        missing = REQUIRED_COLUMNS - set(df.columns)
-        if missing:
-            st.error(f"❌ Missing columns: {', '.join(missing).title()}")
-            return None
-        
-        df["date"] = pd.to_datetime(df["date"], errors="coerce").dt.normalize()
-        df = df.dropna(subset=["date"])
-        
-        numeric_cols = list(REQUIRED_COLUMNS - {"date", "author"})
-        df[numeric_cols] = df[numeric_cols].apply(pd.to_numeric, errors='coerce').fillna(0)
-        df["author"] = df["author"].astype(str).str.strip().str.title()
-        df["shift"] = pd.to_numeric(df["shift"], errors='coerce').fillna(0).astype(int)
+    # Load Excel File
+    excel_data = pd.ExcelFile(excel_file)
+    sheet_name = "Productivity"
+    excel_df = excel_data.parse(sheet_name)
 
-        return df
-    except Exception as e:
-        st.error(f"🚨 Error processing file: {str(e)}")
-        return None
+    # Merge DataFrames on 'Accession'
+    merged_df = pd.merge(csv_df, excel_df, on="Accession", how="inner")
 
-def render_filters(df, min_date, max_date, key_suffix):
-    """Render consistent filter components with unique keys."""
-    col1, col2 = st.columns(2)
-    with col1:
-        date_range = st.date_input(
-            "📆 Date Range",
-            [min_date, max_date],
-            min_value=min_date,
-            max_value=max_date,
-            key=f"date_{key_suffix}"
-        )
-    with col2:
-        selected_providers = st.multiselect(
-            "👤 Providers",
-            df["author"].unique(),
-            key=f"providers_{key_suffix}"
-        )
-    return date_range, selected_providers
+    # Convert date columns to datetime
+    merged_df["Created"] = pd.to_datetime(merged_df["Created"])
+    merged_df["Signed"] = pd.to_datetime(merged_df["Signed"])
+    merged_df["Final Date"] = pd.to_datetime(merged_df["Final Date"])
 
-def filter_data(df, date_range, selected_providers):
-    """Apply date and provider filters to dataframe."""
-    filtered = df[
-        (df["date"] >= pd.Timestamp(date_range[0])) & 
-        (df["date"] <= pd.Timestamp(date_range[1]))
-    ]
-    if selected_providers:
-        filtered = filtered[filtered["author"].isin(selected_providers)]
-    return filtered
+    # Calculate Turnaround Time (minutes)
+    merged_df["Turnaround Time (min)"] = (merged_df["Final Date"] - merged_df["Created"]).dt.total_seconds() / 60
 
-# ---- Main Application ----
-def main():
-    # ---- Sidebar ----
-    with st.sidebar:
-        st.image("milv.png", width=200)
-        uploaded_file = st.file_uploader(
-            "📤 Upload Excel File",
-            type=["xlsx"],
-            help="Upload latest productivity data"
-        )
+    # Sidebar Filters
+    st.sidebar.subheader("Filters")
+    modality_filter = st.sidebar.multiselect("Select Modality", merged_df["Modality"].unique())
+    provider_filter = st.sidebar.multiselect("Select Provider", merged_df["Finalizing Provider"].unique())
 
-        if uploaded_file:
-            with open(FILE_PATH, "wb") as f:
-                f.write(uploaded_file.getbuffer())
-            st.session_state["file_uploaded"] = True
-            st.success("✅ File uploaded successfully!")
+    # Apply Filters
+    if modality_filter:
+        merged_df = merged_df[merged_df["Modality"].isin(modality_filter)]
+    if provider_filter:
+        merged_df = merged_df[merged_df["Finalizing Provider"].isin(provider_filter)]
 
-    # ---- Data Loading ----
-    if os.path.exists(FILE_PATH):
-        with st.spinner("📊 Loading data..."):
-            df = load_data(FILE_PATH)
-    else:
-        st.info("📁 Please upload a file to begin")
-        return
+    # KPIs
+    st.title("📊 Radiology Productivity Dashboard")
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Total Cases", len(merged_df))
+    col2.metric("Avg Turnaround Time (min)", round(merged_df["Turnaround Time (min)"].mean(), 2))
+    col3.metric("Total RVU", round(merged_df["RVU"].sum(), 2))
 
-    if df is None:
-        return
+    # Time Series Analysis
+    st.subheader("📅 Cases Over Time")
+    time_series = merged_df.groupby(merged_df["Final Date"].dt.date).size().reset_index(name="Case Count")
+    fig1 = px.line(time_series, x="Final Date", y="Case Count", title="Cases Processed Over Time")
+    st.plotly_chart(fig1)
 
-    min_date, max_date = df["date"].min().date(), df["date"].max().date()
+    # Provider Performance
+    st.subheader("👨‍⚕️ Provider Performance")
+    provider_performance = merged_df.groupby("Finalizing Provider")["RVU"].sum().reset_index()
+    fig2 = px.bar(provider_performance, x="Finalizing Provider", y="RVU", title="Radiologist RVU Performance")
+    st.plotly_chart(fig2)
 
-    # ---- Main Interface ----
-    st.title("📈 MILV Productivity Dashboard")
-    st.caption(f"Latest data: {max_date.strftime('%Y-%m-%d')}")
+    # Modality Usage
+    st.subheader("📡 Modality Trends")
+    modality_count = merged_df["Modality"].value_counts().reset_index()
+    modality_count.columns = ["Modality", "Count"]
+    fig3 = px.pie(modality_count, names="Modality", values="Count", title="Modality Distribution")
+    st.plotly_chart(fig3)
 
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([
-        "📅 Daily Performance", 
-        "📊 Shift Analysis", 
-        "🏆 Leaderboard", 
-        "⏳ Turnaround", 
-        "📈 Trends"
-    ])
+    # Shift Productivity
+    st.subheader("🕒 Shift-Based Productivity")
+    shift_performance = merged_df.groupby("Shift Time Final")["Points"].sum().reset_index()
+    fig4 = px.bar(shift_performance, x="Shift Time Final", y="Points", title="Shift Productivity (Points)")
+    st.plotly_chart(fig4)
 
-    # ---- Daily Performance Tab ----
-    with tab1:
-        st.subheader("Daily Performance Metrics")
-        date_range, providers = render_filters(df, min_date, max_date, "daily")
-        filtered = filter_data(df, date_range, providers)
+    # Download Processed Data
+    st.subheader("📥 Download Processed Data")
+    output = io.BytesIO()
+    merged_df.to_csv(output, index=False)
+    st.download_button("Download Processed CSV", output.getvalue(), file_name="processed_data.csv", mime="text/csv")
 
-        cols = st.columns(3)
-        cols[0].metric("Total Providers", filtered["author"].nunique())
-        cols[1].metric("Avg Points/HD", f"{filtered['points/half day'].mean():.1f}")
-        cols[2].metric("Avg Procedures/HD", f"{filtered['procedure/half'].mean():.1f}")
+else:
+    st.warning("Please upload both CSV and Excel files to proceed.")
 
-        st.plotly_chart(px.scatter(
-            filtered,
-            x="date",
-            y="points",
-            color="author",
-            title="Daily Points Distribution"
-        ), use_container_width=True)
-
-    # ---- Shift Analysis Tab ----
-    with tab2:
-        st.subheader("Shift-Based Productivity")
-        date_range, providers = render_filters(df, min_date, max_date, "shift")
-        filtered = filter_data(df, date_range, providers)
-
-        shift_stats = filtered.groupby("shift").agg({
-            "points": "mean",
-            "procedure": "mean"
-        }).reset_index()
-
-        st.plotly_chart(px.bar(
-            shift_stats,
-            x="shift",
-            y=["points", "procedure"],
-            barmode="group",
-            title="Average Productivity per Shift",
-            labels={"value": "Average"}
-        ), use_container_width=True)
-
-    # ---- Leaderboard Tab ----
-    with tab3:
-        st.subheader("Provider Leaderboard")
-        date_range, providers = render_filters(df, min_date, max_date, "leaderboard")
-        filtered = filter_data(df, date_range, providers)
-
-        if not filtered.empty:
-            leaderboard = filtered.groupby("author").agg({
-                "points": "sum",
-                "procedure": "sum"
-            }).sort_values("points", ascending=False)
-
-            st.dataframe(
-                leaderboard.style.highlight_max(axis=0),
-                use_container_width=True
-            )
-
-    # ---- Remaining Tabs (Placeholder Implementation) ----
-    with tab4:
-        st.subheader("Turnaround Efficiency")
-        date_range, providers = render_filters(df, min_date, max_date, "turnaround")
-        st.info("⏳ Turnaround metrics coming soon...")
-
-    with tab5:
-        st.subheader("Long-Term Trends")
-        date_range, providers = render_filters(df, min_date, max_date, "trends")
-        st.info("📈 Trend analysis coming soon...")
-
-if __name__ == "__main__":
-    main()
