@@ -99,14 +99,18 @@ def main():
     
     # Weekly Trends Adjustment: Sunday-Saturday Order
     day_order = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
-    filtered_data['Day of Week'] = filtered_data['Final Date'].dt.day_name()
-    filtered_data['Day of Week'] = pd.Categorical(filtered_data['Day of Week'], categories=day_order, ordered=True)
+    filtered_data['Day of Week'] = pd.Categorical(
+        filtered_data['Final Date'].dt.day_name(), categories=day_order, ordered=True
+    )
     
     weekly_summary = filtered_data.groupby('Day of Week', observed=False).agg(
         Cases=('Accession', 'count'),
         Total_RVU=('RVU', 'sum'),
         Total_Points=('Points', 'sum')
-    ).reset_index().sort_values(by='Day of Week')
+    ).reset_index()
+    
+    # Sorting Weekly Data by Correct Order
+    weekly_summary = weekly_summary.sort_values(by='Day of Week')
     
     # Key Metrics
     st.header("📊 Performance Summary")
@@ -123,14 +127,15 @@ def main():
         fig_weekly = px.line(weekly_summary, x='Day of Week', y='Cases', title="Weekly Case Trends", markers=True)
         st.plotly_chart(fig_weekly, use_container_width=True)
     
-    # Sorting all other charts appropriately in descending order
-    st.subheader("📊 Provider Performance")
-    provider_summary = filtered_data.groupby('Finalizing Provider').agg(
+    # Modality Insights (Sorted Descending)
+    st.subheader("📊 Modality Insights")
+    modality_summary = filtered_data.groupby('Modality').agg(
         Cases=('Accession', 'count'),
         Total_RVU=('RVU', 'sum'),
         Total_Points=('Points', 'sum')
-    ).reset_index().sort_values(by='Total_RVU', ascending=False)
-    st.dataframe(provider_summary, use_container_width=True)
+    ).reset_index().sort_values(by='Cases', ascending=False)
+    fig_modality = px.bar(modality_summary, x='Modality', y='Cases', title="Case Distribution by Modality", color='Total_RVU')
+    st.plotly_chart(fig_modality, use_container_width=True)
     
 if __name__ == "__main__":
     main()
