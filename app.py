@@ -42,25 +42,39 @@ def load_data():
 
 def create_visualization(df, x, y, title, viz_type='bar', sort=True, color=None):
     """Create styled visualization with proper sorting"""
+    # Validate input data
+    if df.empty or x not in df.columns or y not in df.columns:
+        return px.Figure()
+    
     # Sort data for bar charts
     if sort and viz_type == 'bar':
         df = df.sort_values(by=y, ascending=False)
     
-    # Create chart
-    if viz_type == 'bar':
-        fig = px.bar(df, x=x, y=y, title=title, color=color or y,
-                     color_continuous_scale=COLOR_SCALE, text=y)
-        # Add text labels only for bar charts
-        fig.update_traces(
-            texttemplate='%{text:,.0f}', 
-            textposition='outside',
-            marker_line_color='rgba(0,0,0,0.3)',
-            marker_line_width=1
-        )
-    elif viz_type == 'line':
-        fig = px.line(df, x=x, y=y, title=title, markers=True)
-    else:
-        fig = px.pie(df, names=x, values=y, title=title)
+    # Create chart with error handling
+    try:
+        if viz_type == 'bar':
+            fig = px.bar(
+                df, 
+                x=x, 
+                y=y, 
+                title=title, 
+                color=color or y,
+                color_continuous_scale=COLOR_SCALE
+            )
+            # Add bar-specific formatting
+            fig.update_traces(
+                texttemplate='%{y:,.0f}',
+                textposition='outside',
+                marker_line_color='rgba(0,0,0,0.2)',
+                marker_line_width=1
+            )
+        elif viz_type == 'line':
+            fig = px.line(df, x=x, y=y, title=title, markers=True)
+        else:
+            fig = px.pie(df, names=x, values=y, title=title)
+    except Exception as e:
+        st.error(f"Chart creation error: {str(e)}")
+        return px.Figure()
     
     # Apply universal styling
     fig.update_layout(
@@ -74,8 +88,15 @@ def create_visualization(df, x, y, title, viz_type='bar', sort=True, color=None)
     
     # Axis formatting
     if viz_type in ['bar', 'line']:
-        fig.update_yaxes(title_text="", showgrid=False)
-        fig.update_xaxes(title_text="", categoryorder='array' if sort else None)
+        fig.update_yaxes(
+            title_text="", 
+            showgrid=False,
+            tickformat=","
+        )
+        fig.update_xaxes(
+            title_text="", 
+            categoryorder='array' if sort else None
+        )
     
     return fig
 
@@ -93,19 +114,32 @@ def main():
     # Sidebar filters
     st.sidebar.header("🛠️ Dashboard Controls")
     with st.sidebar.expander("🔍 Filter Options", expanded=True):
-        providers = st.multiselect("Select Providers:", 
-                                  options=sorted(ytd_data['Finalizing Provider'].dropna().unique()))
-        modalities = st.multiselect("Select Modalities:",
-                                  options=sorted(ytd_data['Modality'].dropna().unique()))
-        shifts = st.multiselect("Select Shifts:",
-                              options=sorted(ytd_data['Shift Time Final'].dropna().unique()))
-        groups = st.multiselect("Select Groups:",
-                               options=sorted(ytd_data['Radiologist Group'].dropna().unique()))
+        providers = st.multiselect(
+            "Select Providers:", 
+            options=sorted(ytd_data['Finalizing Provider'].dropna().unique())
+        )
+        modalities = st.multiselect(
+            "Select Modalities:",
+            options=sorted(ytd_data['Modality'].dropna().unique())
+        )
+        shifts = st.multiselect(
+            "Select Shifts:",
+            options=sorted(ytd_data['Shift Time Final'].dropna().unique())
+        )
+        groups = st.multiselect(
+            "Select Groups:",
+            options=sorted(ytd_data['Radiologist Group'].dropna().unique())
+        )
         
-        date_range = st.date_input("Date Range:", 
-                                 [ytd_data['Final Date'].min(), ytd_data['Final Date'].max()],
-                                 min_value=ytd_data['Final Date'].min(),
-                                 max_value=ytd_data['Final Date'].max())
+        date_range = st.date_input(
+            "Date Range:", 
+            value=(
+                ytd_data['Final Date'].min().to_pydatetime(),
+                ytd_data['Final Date'].max().to_pydatetime()
+            ),
+            min_value=ytd_data['Final Date'].min().to_pydatetime(),
+            max_value=ytd_data['Final Date'].max().to_pydatetime()
+        )
     
     # Filter data
     filtered_data = ytd_data[
@@ -113,14 +147,17 @@ def main():
         (ytd_data['Final Date'] <= pd.to_datetime(date_range[1]))
     ].copy()
     
-    if providers:
-        filtered_data = filtered_data[filtered_data['Finalizing Provider'].isin(providers)]
-    if modalities:
-        filtered_data = filtered_data[filtered_data['Modality'].isin(modalities)]
-    if shifts:
-        filtered_data = filtered_data[filtered_data['Shift Time Final'].isin(shifts)]
-    if groups:
-        filtered_data = filtered_data[filtered_data['Radiologist Group'].isin(groups)]
+    # Apply filters
+    filter_conditions = [
+        (providers, 'Finalizing Provider'),
+        (modalities, 'Modality'),
+        (shifts, 'Shift Time Final'),
+        (groups, 'Radiologist Group')
+    ]
+    
+    for values, column in filter_conditions:
+        if values:
+            filtered_data = filtered_data[filtered_data[column].isin(values)]
     
     if filtered_data.empty:
         st.warning("No data matching selected filters")
