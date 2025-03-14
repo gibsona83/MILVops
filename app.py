@@ -1,21 +1,30 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import requests
+
+# GitHub raw file URLs
+GITHUB_CSV_URL = "https://raw.githubusercontent.com/gibsona83/MILVops/main/YTD2025PS.csv"
+GITHUB_EXCEL_URL = "https://raw.githubusercontent.com/gibsona83/MILVops/main/2025_YTD.xlsx"
 
 # Title and layout setup
 st.set_page_config(page_title="MILV Productivity Dashboard", layout="wide")
 st.title("📊 MILV Radiology Productivity Dashboard")
-st.sidebar.header("Upload Data Files")
 
-# File uploaders
-ps_file = st.sidebar.file_uploader("Upload YTD2025PS.csv", type=["csv"])
-ytd_file = st.sidebar.file_uploader("Upload 2025_YTD.xlsx", type=["xlsx"])
+# Load data from GitHub
+def load_data():
+    try:
+        df_ps = pd.read_csv(GITHUB_CSV_URL, encoding='latin1')
+        df_ytd = pd.read_excel(GITHUB_EXCEL_URL, sheet_name='Productivity')
+        return df_ps, df_ytd
+    except Exception as e:
+        st.error(f"Error loading data: {e}")
+        return None, None
 
-if ps_file and ytd_file:
-    # Load data
-    df_ps = pd.read_csv(ps_file, encoding='latin1')
-    df_ytd = pd.read_excel(ytd_file, sheet_name='Productivity')
-    
+# Fetch data
+df_ps, df_ytd = load_data()
+
+if df_ps is not None and df_ytd is not None:
     # Convert time columns to datetime
     df_ps['Created'] = pd.to_datetime(df_ps['Created'], errors='coerce')
     df_ps['Signed'] = pd.to_datetime(df_ps['Signed'], errors='coerce')
@@ -86,4 +95,4 @@ if ps_file and ytd_file:
     fig_group = px.pie(group_summary, names='Radiologist Group', values='Cases', title="Case Distribution by Group")
     st.plotly_chart(fig_group, use_container_width=True)
 else:
-    st.warning("Please upload both data files to generate insights.")
+    st.warning("Unable to load data. Please check the GitHub repository.")
