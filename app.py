@@ -96,6 +96,10 @@ def main():
         st.warning("No data matching selected filters")
         return
     
+    # Weekly Trends Adjustment: Sunday-Saturday Order
+    filtered_data['Day of Week'] = filtered_data['Final Date'].dt.day_name()
+    day_order = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+    
     # Key Metrics
     st.header("📊 Performance Summary")
     col1, col2, col3 = st.columns(3)
@@ -112,17 +116,20 @@ def main():
     with tab1:
         st.subheader("🧑⚕️ Provider Performance")
         provider_summary = filtered_data.groupby('Finalizing Provider').agg(Cases=('Accession', 'count'), Total_RVU=('RVU', 'sum'), Total_Points=('Points', 'sum')).reset_index()
+        provider_summary = provider_summary.sort_values(by='Total_RVU', ascending=False)
         st.dataframe(provider_summary, use_container_width=True)
     
     with tab2:
         st.subheader("📷 Modality Insights")
         modality_summary = filtered_data.groupby('Modality').agg(Cases=('Accession', 'count'), Total_RVU=('RVU', 'sum'), Total_Points=('Points', 'sum')).reset_index()
+        modality_summary = modality_summary.sort_values(by='Cases', ascending=False)
         fig = px.bar(modality_summary, x='Modality', y='Cases', title="Case Distribution by Modality", color='Total_RVU')
         st.plotly_chart(fig, use_container_width=True)
     
     with tab3:
         st.subheader("👥 Group Comparison")
         group_summary = filtered_data.groupby('Radiologist Group').agg(Cases=('Accession', 'count'), Total_RVU=('RVU', 'sum'), Total_Points=('Points', 'sum')).reset_index()
+        group_summary = group_summary.sort_values(by='Cases', ascending=False)
         fig = px.pie(group_summary, names='Radiologist Group', values='Cases', title="Case Distribution by Group")
         st.plotly_chart(fig, use_container_width=True)
     
