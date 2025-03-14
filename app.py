@@ -97,8 +97,15 @@ def main():
         return
     
     # Weekly Trends Adjustment: Sunday-Saturday Order
-    filtered_data['Day of Week'] = filtered_data['Final Date'].dt.day_name()
-    day_order = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+    filtered_data['Day of Week'] = pd.Categorical(filtered_data['Final Date'].dt.day_name(), 
+                                                  categories=["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"], 
+                                                  ordered=True)
+    
+    weekly_summary = filtered_data.groupby('Day of Week').agg(
+        Cases=('Accession', 'count'),
+        Total_RVU=('RVU', 'sum'),
+        Total_Points=('Points', 'sum')
+    ).reset_index()
     
     # Key Metrics
     st.header("📊 Performance Summary")
@@ -110,28 +117,10 @@ def main():
     with col3:
         st.metric("Total Points", f"{filtered_data['Points'].sum():,.1f}")
     
-    # Visualizations
-    tab1, tab2, tab3 = st.tabs(["Provider Analysis", "Modality Trends", "Group Comparison"])
-    
-    with tab1:
-        st.subheader("🧑⚕️ Provider Performance")
-        provider_summary = filtered_data.groupby('Finalizing Provider').agg(Cases=('Accession', 'count'), Total_RVU=('RVU', 'sum'), Total_Points=('Points', 'sum')).reset_index()
-        provider_summary = provider_summary.sort_values(by='Total_RVU', ascending=False)
-        st.dataframe(provider_summary, use_container_width=True)
-    
-    with tab2:
-        st.subheader("📷 Modality Insights")
-        modality_summary = filtered_data.groupby('Modality').agg(Cases=('Accession', 'count'), Total_RVU=('RVU', 'sum'), Total_Points=('Points', 'sum')).reset_index()
-        modality_summary = modality_summary.sort_values(by='Cases', ascending=False)
-        fig = px.bar(modality_summary, x='Modality', y='Cases', title="Case Distribution by Modality", color='Total_RVU')
-        st.plotly_chart(fig, use_container_width=True)
-    
-    with tab3:
-        st.subheader("👥 Group Comparison")
-        group_summary = filtered_data.groupby('Radiologist Group').agg(Cases=('Accession', 'count'), Total_RVU=('RVU', 'sum'), Total_Points=('Points', 'sum')).reset_index()
-        group_summary = group_summary.sort_values(by='Cases', ascending=False)
-        fig = px.pie(group_summary, names='Radiologist Group', values='Cases', title="Case Distribution by Group")
-        st.plotly_chart(fig, use_container_width=True)
+    # Weekly Case Trends
+    with st.expander("📅 Weekly Trends Analysis", expanded=True):
+        fig_weekly = px.line(weekly_summary, x='Day of Week', y='Cases', title="Weekly Case Trends", markers=True)
+        st.plotly_chart(fig_weekly, use_container_width=True)
     
 if __name__ == "__main__":
     main()
