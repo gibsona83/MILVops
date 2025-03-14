@@ -24,10 +24,11 @@ def load_data():
         ps_data = pd.read_csv(DATA_CONFIG['csv_url'], encoding='latin1')
         ytd_data = pd.read_excel(DATA_CONFIG['excel_url'], sheet_name=DATA_CONFIG['excel_sheet'])
         
-        # Data processing
-        time_cols = {'ps': ['Created', 'Signed'], 'ytd': ['Final Date']}
-        ps_data[time_cols['ps']] = ps_data[time_cols['ps']].apply(pd.to_datetime, errors='coerce')
-        ytd_data[time_cols['ytd']] = ytd_data[time_cols['ytd']].apply(pd.to_datetime, errors='coerce')
+        # Convert datetime columns
+        ps_data[['Created', 'Signed']] = ps_data[['Created', 'Signed']].apply(pd.to_datetime, errors='coerce')
+        ytd_data['Final Date'] = pd.to_datetime(ytd_data['Final Date'], errors='coerce')
+        
+        # Calculate Turnaround Time (TAT)
         ps_data['TAT (Minutes)'] = (ps_data['Signed'] - ps_data['Created']).dt.total_seconds() / 60
         
         return ps_data, ytd_data
@@ -40,10 +41,10 @@ def create_sidebar_filters(df):
     """Create dynamically updating sidebar filters"""
     st.sidebar.header("🛠️ Dashboard Controls")
     with st.sidebar.expander("🔍 Filter Options", expanded=True):
-        providers = st.multiselect("Select Providers:", options=df['Finalizing Provider'].unique(), default=list(df['Finalizing Provider'].unique()))
-        modalities = st.multiselect("Select Modalities:", options=df['Modality'].unique(), default=list(df['Modality'].unique()))
-        shifts = st.multiselect("Select Shifts:", options=df['Shift Time Final'].unique(), default=list(df['Shift Time Final'].unique()))
-        groups = st.multiselect("Select Groups:", options=df['Radiologist Group'].unique(), default=list(df['Radiologist Group'].unique()))
+        providers = st.multiselect("Select Providers:", options=sorted(df['Finalizing Provider'].dropna().unique()))
+        modalities = st.multiselect("Select Modalities:", options=sorted(df['Modality'].dropna().unique()))
+        shifts = st.multiselect("Select Shifts:", options=sorted(df['Shift Time Final'].dropna().unique()))
+        groups = st.multiselect("Select Groups:", options=sorted(df['Radiologist Group'].dropna().unique()))
         
         date_col = 'Final Date'
         min_date, max_date = df[date_col].min(), df[date_col].max()
@@ -101,12 +102,11 @@ def main():
     filtered_data['Day of Week'] = filtered_data['Final Date'].dt.day_name()
     filtered_data['Day of Week'] = pd.Categorical(filtered_data['Day of Week'], categories=day_order, ordered=True)
     
-    weekly_summary = filtered_data.groupby('Day of Week', observed=True).agg(
+    weekly_summary = filtered_data.groupby('Day of Week', observed=False).agg(
         Cases=('Accession', 'count'),
         Total_RVU=('RVU', 'sum'),
         Total_Points=('Points', 'sum')
-    ).reset_index()
-    weekly_summary = weekly_summary.sort_values(by='Day of Week')
+    ).reset_index().sort_values(by='Day of Week')
     
     # Key Metrics
     st.header("📊 Performance Summary")
@@ -122,6 +122,15 @@ def main():
     with st.expander("📅 Weekly Trends Analysis", expanded=True):
         fig_weekly = px.line(weekly_summary, x='Day of Week', y='Cases', title="Weekly Case Trends", markers=True)
         st.plotly_chart(fig_weekly, use_container_width=True)
+    
+    # Sorting all other charts appropriately in descending order
+    st.subheader("📊 Provider Performance")
+    provider_summary = filtered_data.groupby('Finalizing Provider').agg(
+        Cases=('Accession', 'count'),
+        Total_RVU=('RVU', 'sum'),
+        Total_Points=('Points', 'sum')
+    ).reset_index().sort_values(by='Total_RVU', ascending=False)
+    st.dataframe(provider_summary, use_container_width=True)
     
 if __name__ == "__main__":
     main()
