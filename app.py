@@ -34,21 +34,31 @@ if df_ps is not None and df_ytd is not None:
     df_ps['TAT (Minutes)'] = (df_ps['Signed'] - df_ps['Created']).dt.total_seconds() / 60
     
     # Sidebar filters
+    st.sidebar.header("Filters")
     provider_filter = st.sidebar.multiselect("Select Providers", df_ytd['Finalizing Provider'].unique())
     modality_filter = st.sidebar.multiselect("Select Modalities", df_ytd['Modality'].unique())
     shift_filter = st.sidebar.multiselect("Select Shifts", df_ytd['Shift Time Final'].unique())
+    group_filter = st.sidebar.multiselect("Select Radiologist Group", df_ytd['Radiologist Group'].unique())
+    
+    # Date filter
+    start_date = st.sidebar.date_input("Start Date", df_ytd['Final Date'].min())
+    end_date = st.sidebar.date_input("End Date", df_ytd['Final Date'].max())
     
     # Apply filters
+    df_filtered = df_ytd.copy()
     if provider_filter:
-        df_ytd = df_ytd[df_ytd['Finalizing Provider'].isin(provider_filter)]
+        df_filtered = df_filtered[df_filtered['Finalizing Provider'].isin(provider_filter)]
     if modality_filter:
-        df_ytd = df_ytd[df_ytd['Modality'].isin(modality_filter)]
+        df_filtered = df_filtered[df_filtered['Modality'].isin(modality_filter)]
     if shift_filter:
-        df_ytd = df_ytd[df_ytd['Shift Time Final'].isin(shift_filter)]
+        df_filtered = df_filtered[df_filtered['Shift Time Final'].isin(shift_filter)]
+    if group_filter:
+        df_filtered = df_filtered[df_filtered['Radiologist Group'].isin(group_filter)]
+    df_filtered = df_filtered[(df_filtered['Final Date'] >= pd.to_datetime(start_date)) & (df_filtered['Final Date'] <= pd.to_datetime(end_date))]
     
     # Productivity summary
     st.subheader("📈 Provider Productivity Overview")
-    provider_summary = df_ytd.groupby('Finalizing Provider').agg(
+    provider_summary = df_filtered.groupby('Finalizing Provider').agg(
         Cases=('Accession', 'count'),
         Total_RVU=('RVU', 'sum'),
         Total_Points=('Points', 'sum')
@@ -57,7 +67,7 @@ if df_ps is not None and df_ytd is not None:
     
     # Modality analysis
     st.subheader("🔍 Modality Statistics")
-    modality_summary = df_ytd.groupby('Modality').agg(
+    modality_summary = df_filtered.groupby('Modality').agg(
         Cases=('Accession', 'count'),
         Total_RVU=('RVU', 'sum'),
         Total_Points=('Points', 'sum')
@@ -67,7 +77,7 @@ if df_ps is not None and df_ytd is not None:
     
     # Shift-based analysis
     st.subheader("⏳ Productivity by Shift")
-    shift_summary = df_ytd.groupby('Shift Time Final').agg(
+    shift_summary = df_filtered.groupby('Shift Time Final').agg(
         Cases=('Accession', 'count'),
         Total_RVU=('RVU', 'sum'),
         Total_Points=('Points', 'sum')
@@ -76,8 +86,8 @@ if df_ps is not None and df_ytd is not None:
     st.plotly_chart(fig_shift, use_container_width=True)
     
     # Weekly trends
-    df_ytd['Day of Week'] = df_ytd['Final Date'].dt.day_name()
-    weekly_summary = df_ytd.groupby('Day of Week').agg(
+    df_filtered['Day of Week'] = df_filtered['Final Date'].dt.day_name()
+    weekly_summary = df_filtered.groupby('Day of Week').agg(
         Cases=('Accession', 'count'),
         Total_RVU=('RVU', 'sum'),
         Total_Points=('Points', 'sum')
@@ -87,7 +97,7 @@ if df_ps is not None and df_ytd is not None:
     
     # Group comparison (MILV vs. vRad)
     st.subheader("🏥 Radiologist Group Comparison")
-    group_summary = df_ytd.groupby('Radiologist Group').agg(
+    group_summary = df_filtered.groupby('Radiologist Group').agg(
         Cases=('Accession', 'count'),
         Total_RVU=('RVU', 'sum'),
         Total_Points=('Points', 'sum')
