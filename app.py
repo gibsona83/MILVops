@@ -35,49 +35,19 @@ def load_data():
         st.error(f"Data loading error: {str(e)}")
         return None, None
 
-def create_summary(df, group_col, metrics):
-    """Create aggregated summary statistics"""
-    return df.groupby(group_col).agg(**{
-        'Cases': ('Accession', 'count'),
-        'Total RVUs': ('RVU', 'sum'),
-        'Total Points': ('Points', 'sum')
-    }).reset_index()
-
-def create_visualization(df, x_col, y_col, title, viz_type='bar', color_col=None):
-    """Create Plotly visualization with consistent styling"""
-    color_scale = px.colors.sequential.Blues
-    fig = None
-    
-    if viz_type == 'bar':
-        fig = px.bar(df, x=x_col, y=y_col, title=title,
-                     color=color_col or y_col, color_continuous_scale=color_scale)
-    elif viz_type == 'line':
-        fig = px.line(df, x=x_col, y=y_col, title=title, markers=True)
-    elif viz_type == 'pie':
-        fig = px.pie(df, names=x_col, values=y_col, title=title)
-    
-    if fig:
-        fig.update_layout(
-            plot_bgcolor='rgba(0,0,0,0)',
-            paper_bgcolor='rgba(0,0,0,0)',
-            font=dict(color='#2c3e50'),
-            height=500
-        )
-    return fig
-
+# Sidebar filters with dynamic updates
 def create_sidebar_filters(df):
-    """Create sidebar filters and return filter parameters"""
+    """Create dynamically updating sidebar filters"""
     st.sidebar.header("🛠️ Dashboard Controls")
-    
     with st.sidebar.expander("🔍 Filter Options", expanded=True):
-        providers = st.multiselect("Select Providers:", df['Finalizing Provider'].unique())
-        modalities = st.multiselect("Select Modalities:", df['Modality'].unique())
-        shifts = st.multiselect("Select Shifts:", df['Shift Time Final'].unique())
-        groups = st.multiselect("Select Groups:", df['Radiologist Group'].unique())
+        providers = st.multiselect("Select Providers:", options=df['Finalizing Provider'].unique(), default=list(df['Finalizing Provider'].unique()))
+        modalities = st.multiselect("Select Modalities:", options=df['Modality'].unique(), default=list(df['Modality'].unique()))
+        shifts = st.multiselect("Select Shifts:", options=df['Shift Time Final'].unique(), default=list(df['Shift Time Final'].unique()))
+        groups = st.multiselect("Select Groups:", options=df['Radiologist Group'].unique(), default=list(df['Radiologist Group'].unique()))
         
         date_col = 'Final Date'
         min_date, max_date = df[date_col].min(), df[date_col].max()
-        start_date, end_date = st.date_input("Date Range:", [min_date, max_date])
+        start_date, end_date = st.date_input("Date Range:", [min_date, max_date], min_value=min_date, max_value=max_date)
     
     return {
         'providers': providers,
@@ -88,31 +58,22 @@ def create_sidebar_filters(df):
         'end_date': pd.to_datetime(end_date)
     }
 
+# Apply filters dynamically
 def apply_filters(df, filters):
-    """Apply filters to dataframe"""
+    """Apply dynamic filters to the dataset"""
     filtered_df = df.copy()
     
-    # Provider filter
     if filters['providers']:
         filtered_df = filtered_df[filtered_df['Finalizing Provider'].isin(filters['providers'])]
-    
-    # Modality filter
     if filters['modalities']:
         filtered_df = filtered_df[filtered_df['Modality'].isin(filters['modalities'])]
-    
-    # Shift filter
     if filters['shifts']:
         filtered_df = filtered_df[filtered_df['Shift Time Final'].isin(filters['shifts'])]
-    
-    # Group filter
     if filters['groups']:
         filtered_df = filtered_df[filtered_df['Radiologist Group'].isin(filters['groups'])]
     
-    # Date filter
-    filtered_df = filtered_df[
-        (filtered_df['Final Date'] >= filters['start_date']) & 
-        (filtered_df['Final Date'] <= filters['end_date'])
-    ]
+    # Date range filter
+    filtered_df = filtered_df[(filtered_df['Final Date'] >= filters['start_date']) & (filtered_df['Final Date'] <= filters['end_date'])]
     
     return filtered_df
 
@@ -127,7 +88,7 @@ def main():
         st.warning("⚠️ Data not available. Please check your connection.")
         return
     
-    # Create sidebar filters
+    # Create dynamically updating sidebar filters
     filters = create_sidebar_filters(ytd_data)
     filtered_data = apply_filters(ytd_data, filters)
     
@@ -145,38 +106,25 @@ def main():
     with col3:
         st.metric("Total Points", f"{filtered_data['Points'].sum():,.1f}")
     
-    # Main visualizations
+    # Visualizations
     tab1, tab2, tab3 = st.tabs(["Provider Analysis", "Modality Trends", "Group Comparison"])
     
     with tab1:
         st.subheader("🧑⚕️ Provider Performance")
-        provider_summary = create_summary(filtered_data, 'Finalizing Provider', ['RVU', 'Points'])
-        st.dataframe(
-            provider_summary.style.format({'Total RVUs': '{:,.1f}', 'Total Points': '{:,.1f}'}),
-            use_container_width=True
-        )
-        
+        provider_summary = filtered_data.groupby('Finalizing Provider').agg(Cases=('Accession', 'count'), Total_RVU=('RVU', 'sum'), Total_Points=('Points', 'sum')).reset_index()
+        st.dataframe(provider_summary, use_container_width=True)
+    
     with tab2:
         st.subheader("📷 Modality Insights")
-        modality_summary = create_summary(filtered_data, 'Modality', ['RVU', 'Points'])
-        fig = create_visualization(modality_summary, 'Modality', 'Cases', 
-                                  "Case Distribution by Modality", color_col='Total RVUs')
-        st.plotly_chart(fig, use_container_width=True)
-        
-    with tab3:
-        st.subheader("👥 Group Comparison")
-        group_summary = create_summary(filtered_data, 'Radiologist Group', ['RVU', 'Points'])
-        fig = create_visualization(group_summary, 'Radiologist Group', 'Cases',
-                                  "Case Distribution by Group", viz_type='pie')
+        modality_summary = filtered_data.groupby('Modality').agg(Cases=('Accession', 'count'), Total_RVU=('RVU', 'sum'), Total_Points=('Points', 'sum')).reset_index()
+        fig = px.bar(modality_summary, x='Modality', y='Cases', title="Case Distribution by Modality", color='Total_RVU')
         st.plotly_chart(fig, use_container_width=True)
     
-    # Additional insights
-    with st.expander("📅 Weekly Trends Analysis", expanded=True):
-        filtered_data['Day of Week'] = filtered_data['Final Date'].dt.day_name()
-        weekly_summary = create_summary(filtered_data, 'Day of Week', ['RVU', 'Points'])
-        fig = create_visualization(weekly_summary, 'Day of Week', 'Cases', 
-                                  "Weekly Case Trends", viz_type='line')
+    with tab3:
+        st.subheader("👥 Group Comparison")
+        group_summary = filtered_data.groupby('Radiologist Group').agg(Cases=('Accession', 'count'), Total_RVU=('RVU', 'sum'), Total_Points=('Points', 'sum')).reset_index()
+        fig = px.pie(group_summary, names='Radiologist Group', values='Cases', title="Case Distribution by Group")
         st.plotly_chart(fig, use_container_width=True)
-
+    
 if __name__ == "__main__":
     main()
