@@ -97,15 +97,17 @@ def main():
         return
     
     # Weekly Trends Adjustment: Sunday-Saturday Order
-    filtered_data['Day of Week'] = pd.Categorical(filtered_data['Final Date'].dt.day_name(), 
-                                                  categories=["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"], 
-                                                  ordered=True)
-    
+    day_order = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
+    filtered_data['Day of Week'] = filtered_data['Final Date'].dt.day_name()
     weekly_summary = filtered_data.groupby('Day of Week').agg(
         Cases=('Accession', 'count'),
         Total_RVU=('RVU', 'sum'),
         Total_Points=('Points', 'sum')
     ).reset_index()
+    
+    # Ensure the correct order of days
+    weekly_summary['Day of Week'] = pd.Categorical(weekly_summary['Day of Week'], categories=day_order, ordered=True)
+    weekly_summary = weekly_summary.sort_values(by='Day of Week')
     
     # Key Metrics
     st.header("📊 Performance Summary")
